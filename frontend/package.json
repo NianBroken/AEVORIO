@@ -1,0 +1,36 @@
+{
+  "name": "aevorio-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "author": "NianBroken",
+  "description": "AEVORIO 企业网站 Next.js 前端",
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "lucide-react": "^0.547.0",
+    "next": "^16.2.9",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@next/eslint-plugin-next": "^16.2.9",
+    "@playwright/test": "^1.64.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^10.14.0",
+    "typescript-eslint": "^8.72.1",
+    "typescript": "^5.9.3"
+  }
+}

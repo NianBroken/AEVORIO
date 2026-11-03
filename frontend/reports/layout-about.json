@@ -1,0 +1,74 @@
+[
+  {
+    "requestedWidth": 1920,
+    "viewportWidth": 1920,
+    "scrollWidth": 1920,
+    "stageWidth": 1920,
+    "logicalHeight": 7071,
+    "shellHeight": 9428,
+    "columns": null
+  },
+  {
+    "requestedWidth": 1600,
+    "viewportWidth": 1600,
+    "scrollWidth": 1600,
+    "stageWidth": 1600.0001220703125,
+    "logicalHeight": 7071,
+    "shellHeight": 7857,
+    "columns": null
+  },
+  {
+    "requestedWidth": 1440,
+    "viewportWidth": 1440,
+    "scrollWidth": 1440,
+    "stageWidth": 1440,
+    "logicalHeight": 7071,
+    "shellHeight": 7071,
+    "columns": null
+  },
+  {
+    "requestedWidth": 1280,
+    "viewportWidth": 1280,
+    "scrollWidth": 1280,
+    "stageWidth": 1280,
+    "logicalHeight": 7071,
+    "shellHeight": 6286,
+    "columns": null
+  },
+  {
+    "requestedWidth": 1024,
+    "viewportWidth": 1024,
+    "scrollWidth": 1024,
+    "stageWidth": 1024,
+    "logicalHeight": 7071,
+    "shellHeight": 5029,
+    "columns": null
+  },
+  {
+    "requestedWidth": 768,
+    "viewportWidth": 768,
+    "scrollWidth": 768,
+    "stageWidth": 768.0000610351562,
+    "logicalHeight": 7071,
+    "shellHeight": 3772,
+    "columns": null
+  },
+  {
+    "requestedWidth": 390,
+    "viewportWidth": 390,
+    "scrollWidth": 390,
+    "stageWidth": 390,
+    "logicalHeight": 7071,
+    "shellHeight": 1916,
+    "columns": null
+  },
+  {
+    "requestedWidth": 320,
+    "viewportWidth": 320,
+    "scrollWidth": 320,
+    "stageWidth": 320,
+    "logicalHeight": 7071,
+    "shellHeight": 1572,
+    "columns": null
+  }
+]

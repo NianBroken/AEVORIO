@@ -1,0 +1,25 @@
+import { defineConfig } from '@playwright/test';
+
+// 浏览器基准尺寸以同一个 1440 逻辑画布为准，单测与正式服务均通过真实接口。
+const baseURL = process.env.AEVORIO_E2E_BASE_URL ?? 'http://127.0.0.1:3000';
+
+export default defineConfig({
+  testDir: './e2e',
+  fullyParallel: true,
+  forbidOnly: Boolean(process.env.CI),
+  retries: process.env.CI ? 1 : 0,
+  reporter: [['list'], ['json', { outputFile: 'reports/browser-test-report.json' }]],
+  projects: [
+    { name: 'website', testMatch: ['site.spec.ts', 'failure-state.spec.ts'] },
+    { name: 'maintenance', testMatch: 'maintenance.spec.ts', dependencies: ['website'] },
+  ],
+  use: {
+    baseURL,
+    browserName: 'chromium',
+    headless: true,
+    viewport: { width: 1440, height: 960 },
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+  },
+  outputDir: './test-results',
+});

@@ -1,0 +1,48 @@
+{
+  "name": "aevorio-backend",
+  "version": "1.0.0",
+  "private": true,
+  "author": "NianBroken",
+  "description": "AEVORIO 企业网站 Express 服务",
+  "main": "dist/src/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run --reporter=default --reporter=json --outputFile=reports/backend-unit-test-report.json",
+    "media:generate": "tsx scripts/generate-media.ts",
+    "db:init": "tsx scripts/initialize-database.ts",
+    "verify:live": "tsx scripts/verify-live-api.ts",
+    "audit:delivery": "tsx scripts/audit-delivery.ts",
+    "content:manage": "tsx scripts/maintain-content.ts",
+    "start": "node dist/src/server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.3.0",
+    "mysql2": "^3.15.0",
+    "sharp": "^0.35.5",
+    "zod": "^4.1.12"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.10.0",
+    "@types/supertest": "^6.0.3",
+    "eslint": "^10.14.0",
+    "globals": "^17.4.0",
+    "supertest": "^7.1.4",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.1.0"
+  },
+  "allowScripts": {
+    "sharp@0.35.5": true,
+    "esbuild@0.28.2": true
+  }
+}

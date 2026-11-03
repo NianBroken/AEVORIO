@@ -1,0 +1,25 @@
+{
+  "generatedAt": "2026-11-03T06:34:35.360Z",
+  "checks": [
+    {
+      "name": "检查网站页面响应、数据边界和示例标记",
+      "passed": true
+    },
+    {
+      "name": "检查八类线上错误和一百组随机非法参数",
+      "passed": true
+    },
+    {
+      "name": "验证五十二张真实位图的 HTTP 响应、格式、尺寸与数据库 SHA-256",
+      "passed": true
+    },
+    {
+      "name": "验证公司名称编辑、单产品编辑、图片换入及原内容恢复",
+      "passed": true
+    },
+    {
+      "name": "验证 MySQL 故障分支和敏感信息隔离",
+      "passed": true
+    }
+  ]
+}
