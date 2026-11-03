@@ -27,10 +27,41 @@
 **/*.tsbuildinfo
 
 # Editor and operating system files
-.vscode/
-.idea/
+**/.vscode/
+**/.idea/
 *.swp
 *.swo
 Thumbs.db
 Desktop.ini
 .DS_Store
+# Additional generated output and package caches
+**/out/
+**/.output/
+**/.vercel/
+**/.netlify/
+**/.npm/
+**/.pnpm-store/
+**/.yarn/cache/
+**/.yarn/unplugged/
+**/.yarn/install-state.gz
+**/.yarn/build-state.yml
+**/.nyc_output/
+**/.vitest-cache/
+**/.stylelintcache
+
+# Temporary directories and local process files
+**/tmp/
+**/temp/
+**/logs/
+**/*.pid
+**/*.pid.lock
+**/*.bak
+**/*~
+
+# Operating system metadata
+**/Thumbs.db:encryptable
+**/ehthumbs.db
+**/$RECYCLE.BIN/
+**/._*
+**/.Spotlight-V100/
+**/.Trashes/
