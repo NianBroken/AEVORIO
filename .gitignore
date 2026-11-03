@@ -55,6 +55,10 @@ Desktop.ini
 **/logs/
 **/*.pid
 **/*.pid.lock
+backend/storage/backups/
+backend/storage/private/
+backend/storage/uploads/
+backend/storage/.staging/
 **/*.bak
 **/*~
 
@@ -65,3 +69,18 @@ Desktop.ini
 **/._*
 **/.Spotlight-V100/
 **/.Trashes/
+
+frontend/storage/
+
+frontend/test-results-coverage/
+frontend/test-results-admin-final/
+frontend/reports/runtime-stop.json
+
+# Generated verification reports and screenshots
+backend/reports/*
+frontend/reports/*
+frontend/screenshots/*
+!backend/reports/README.md
+!frontend/reports/README.md
+!frontend/screenshots/README.md
+**/test-results-*/

@@ -1,10 +1,15 @@
-'use client';
+"use client";
 
-import { ArrowUpRight, ChevronRight, X } from 'lucide-react';
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import type { ProductCategory, SiteProduct, SiteSection } from '../lib/site-types';
-import { ScaledImage } from './ScaledImage';
-import { SectionLabel } from './SectionLabel';
+import { ManagedIcon } from "./ManagedIcon";
+import { useSiteContent } from "./ContentProvider";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import type {
+  ProductCategory,
+  SiteProduct,
+  SiteSection,
+} from "../lib/site-types";
+import { ScaledImage } from "./ScaledImage";
+import { SectionLabel } from "./SectionLabel";
 
 interface ProductMatrixProps {
   category: ProductCategory;
@@ -18,36 +23,51 @@ interface DialogFrame {
 }
 
 // 图片、文字与同页原生键盘弹窗始终对应一条唯一的 MySQL 示例产品记录。
-export function ProductMatrix({ category, products, section }: ProductMatrixProps) {
+export function ProductMatrix({
+  category,
+  products,
+  section,
+}: ProductMatrixProps) {
+  const { copy } = useSiteContent();
   const dialogRef = useRef<HTMLDivElement>(null);
   const [activeProduct, setActiveProduct] = useState<SiteProduct | null>(null);
-  const [dialogFrame, setDialogFrame] = useState<DialogFrame>({ height: 900, top: 0 });
+  const [dialogFrame, setDialogFrame] = useState<DialogFrame>({
+    height: 900,
+    top: 0,
+  });
 
   useLayoutEffect(() => {
     if (!activeProduct) return;
 
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.documentElement.style.overflow;
-    document.documentElement.style.overflow = 'hidden';
-    dialogRef.current?.querySelector<HTMLElement>('[data-dialog-initial-focus="true"]')?.focus();
+    const previousFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const previousOverflow = document.documentElement.style.overflowY;
+    document.documentElement.style.overflowY = "hidden";
+    dialogRef.current
+      ?.querySelector<HTMLElement>('[data-dialog-initial-focus="true"]')
+      ?.focus();
 
     return () => {
-      document.documentElement.style.overflow = previousOverflow;
+      document.documentElement.style.overflowY = previousOverflow;
       previousFocus?.focus();
     };
   }, [activeProduct]);
 
   const handleDialogKeys = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === 'Escape') {
+    if (event.key === "Escape") {
       event.preventDefault();
       setActiveProduct(null);
       return;
     }
 
-    if (event.key !== 'Tab') return;
-    const focusable = [...(dialogRef.current?.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ) ?? [])];
+    if (event.key !== "Tab") return;
+    const focusable = [
+      ...(dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? []),
+    ];
     const first = focusable[0];
     const last = focusable.at(-1);
     if (!first || !last) return;
@@ -62,10 +82,16 @@ export function ProductMatrix({ category, products, section }: ProductMatrixProp
   };
 
   const openProduct = (product: SiteProduct): void => {
-    const shell = document.querySelector<HTMLElement>('[data-scaled-layout="1440"]');
-    const pageScale = Number(shell?.getAttribute('data-scale-factor'));
-    const safeScale = Number.isFinite(pageScale) && pageScale > 0 ? pageScale : 1;
-    setDialogFrame({ height: window.innerHeight / safeScale, top: window.scrollY / safeScale });
+    const shell = document.querySelector<HTMLElement>(
+      '[data-scaled-layout="1440"]',
+    );
+    const pageScale = Number(shell?.getAttribute("data-scale-factor"));
+    const safeScale =
+      Number.isFinite(pageScale) && pageScale > 0 ? pageScale : 1;
+    setDialogFrame({
+      height: window.innerHeight / safeScale,
+      top: window.scrollY / safeScale,
+    });
     setActiveProduct(product);
   };
 
@@ -79,29 +105,58 @@ export function ProductMatrix({ category, products, section }: ProductMatrixProp
       id={`catalog-${category.slug}`}
     >
       <header className="product-category-header">
-        <SectionLabel section={section} titleId={`catalog-title-${category.slug}`} />
-        <div className="category-count"><span>产品样例</span><span>{String(products.length).padStart(2, '0')}</span></div>
+        <SectionLabel
+          section={section}
+          titleId={`catalog-title-${category.slug}`}
+        />
+        <div className="category-count">
+          <span>{copy("productCountLabel")}</span>
+          <span>{String(products.length).padStart(2, "0")}</span>
+        </div>
       </header>
 
       <p className="category-context">{category.description}</p>
+      {section.subtitle && (
+        <p className="category-context">{section.subtitle}</p>
+      )}
+      {Boolean(section.content.note) && (
+        <p className="category-context">{String(section.content.note)}</p>
+      )}
 
-      <div aria-label={`${category.name}产品`} className="product-grid">
+      {!products.length && <p>{copy("emptyProducts")}</p>}
+      <div
+        aria-label={copy("productGridLabel").replace("{name}", category.name)}
+        className="product-grid"
+      >
         {products.map((product, index) => (
           <button
             aria-haspopup="dialog"
-            aria-label={`打开 ${product.name} 产品说明`}
+            aria-label={copy("openProductLabel").replace(
+              "{name}",
+              product.name,
+            )}
             className="product-tile"
             data-product-slug={product.slug}
             key={product.slug}
             onClick={() => openProduct(product)}
             type="button"
           >
-            <span className="product-image-frame"><ScaledImage media={product.media} sizes="224px" /></span>
+            <span className="product-image-frame">
+              <ScaledImage media={product.media} sizes="224px" />
+            </span>
             <span className="product-tile-copy">
-              <span className="product-tile-index">{String(index + 1).padStart(2, '0')} / 05</span>
+              <span className="product-tile-index">
+                {String(index + 1).padStart(2, "0")} /{" "}
+                {String(products.length).padStart(2, "0")}
+              </span>
               <span className="product-tile-title">{product.name}</span>
               <span className="product-tile-summary">{product.subtitle}</span>
-              <ChevronRight aria-hidden="true" className="product-tile-arrow" size={16} strokeWidth={1.8} />
+              <ManagedIcon
+                name={copy("productArrowIcon")}
+                aria-hidden
+                className="product-tile-arrow"
+                size={16}
+              />
             </span>
           </button>
         ))}
@@ -110,7 +165,10 @@ export function ProductMatrix({ category, products, section }: ProductMatrixProp
       {activeProduct && (
         <div
           className="product-dialog-scrim"
-          style={{ height: `${dialogFrame.height}px`, top: `${dialogFrame.top}px` }}
+          style={{
+            height: `${dialogFrame.height}px`,
+            top: `${dialogFrame.top}px`,
+          }}
           onClick={(event) => {
             if (event.target === event.currentTarget) setActiveProduct(null);
           }}
@@ -127,37 +185,75 @@ export function ProductMatrix({ category, products, section }: ProductMatrixProp
           >
             <div className="product-dialog-visual">
               <ScaledImage media={activeProduct.media} priority sizes="360px" />
-              <span className="dialog-image-caption">{activeProduct.categoryName} / 硬件示例</span>
+              <span className="dialog-image-caption">
+                {activeProduct.categoryName} / {copy("dialogCaption")}
+              </span>
             </div>
             <div className="product-dialog-copy">
               <div className="dialog-topline">
-                <span>HARDWARE REFERENCE / {String(activeProduct.sortOrder).padStart(2, '0')}</span>
+                <span>
+                  {copy("dialogReference")} /{" "}
+                  {String(activeProduct.sortOrder).padStart(2, "0")}
+                </span>
                 <button
-                  aria-label="关闭产品说明"
+                  aria-label={copy("closeProductLabel")}
                   className="dialog-close"
                   data-dialog-initial-focus="true"
                   onClick={() => setActiveProduct(null)}
                   type="button"
                 >
-                  <X aria-hidden="true" size={20} strokeWidth={1.8} />
+                  <ManagedIcon name={copy("closeIcon")} aria-hidden size={20} />
                 </button>
               </div>
-              <p className="dialog-category">{activeProduct.categoryName} · 示例产品</p>
+              <p className="dialog-category">
+                {activeProduct.categoryName}
+                {activeProduct.isDemo ? ` · ${copy("demoProductLabel")}` : ""}
+              </p>
               <h2 id="product-dialog-title">{activeProduct.name}</h2>
+              {activeProduct.model && <p>{activeProduct.model}</p>}
+              {activeProduct.icon && (
+                <ManagedIcon name={activeProduct.icon} size={24} aria-hidden />
+              )}
               <p className="dialog-subtitle">{activeProduct.subtitle}</p>
               <p className="dialog-description">{activeProduct.description}</p>
               <div className="dialog-feature-group">
-                <h3>板卡方向</h3>
+                <h3>{copy("featuresTitle")}</h3>
                 <ul>
-                  {activeProduct.features.map((feature) => <li key={feature}>{feature}</li>)}
+                  {activeProduct.features.map((feature) => (
+                    <li key={feature}>{feature}</li>
+                  ))}
                 </ul>
               </div>
               <div className="dialog-specifications">
-                <h3>接口与结构</h3>
-                <div>{activeProduct.specifications.map((specification) => <span key={specification}>{specification}</span>)}</div>
+                <h3>{copy("specificationsTitle")}</h3>
+                <div>
+                  {activeProduct.specifications.map((specification) => (
+                    <span key={specification}>{specification}</span>
+                  ))}
+                </div>
               </div>
-              <p className="dialog-demo-note">此板卡为技术外观示例，不表示已量产或正式销售。</p>
-              <span aria-hidden="true" className="dialog-index"><ArrowUpRight size={19} strokeWidth={1.7} /></span>
+              {!!activeProduct.tags?.length && (
+                <div className="product-tags">
+                  {activeProduct.tags.map((tag, index) => (
+                    <span key={`${index}-${tag}`}>{tag}</span>
+                  ))}
+                </div>
+              )}
+              {!!activeProduct.gallery?.length && (
+                <div className="product-gallery">
+                  {activeProduct.gallery.map((media, index) => (
+                    <div key={`${index}-${media.id}`}>
+                      <ScaledImage media={media} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {activeProduct.isDemo && (
+                <p className="dialog-demo-note">{copy("demoNote")}</p>
+              )}
+              <span aria-hidden="true" className="dialog-index">
+                <ManagedIcon name={copy("dialogIcon")} size={19} />
+              </span>
             </div>
           </div>
         </div>

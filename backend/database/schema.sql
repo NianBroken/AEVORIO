@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS `site_settings` (
   `setting_key` VARCHAR(64) NOT NULL COMMENT '全站设置的唯一键',
   `setting_value` JSON NOT NULL COMMENT '网站名称、公司示例名称及语言',
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '配置更新时间',
+  `version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '乐观并发版本',
   PRIMARY KEY (`setting_key`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
@@ -16,6 +17,10 @@ CREATE TABLE IF NOT EXISTS `pages` (
   `title` VARCHAR(120) NOT NULL COMMENT '网站导航和网页标题',
   `meta_description` VARCHAR(255) NOT NULL COMMENT '页面搜索摘要',
   `is_visible` BOOLEAN NOT NULL DEFAULT TRUE COMMENT '页面是否公开显示',
+  `og_title` VARCHAR(240) NOT NULL DEFAULT '' COMMENT '分享标题',
+  `og_description` TEXT NULL COMMENT '分享说明',
+  `og_media_id` VARCHAR(96) NULL COMMENT '分享图资源标识',
+  `version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '乐观并发版本',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_pages_slug` (`slug`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
@@ -32,10 +37,13 @@ CREATE TABLE IF NOT EXISTS `media_assets` (
   `sha256` CHAR(64) NOT NULL COMMENT '媒体文件 SHA-256 校验值',
   `alt_text` VARCHAR(255) NOT NULL COMMENT '辅助技术可读取的简体中文图片说明',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '资源创建时间',
+  `caption` VARCHAR(240) NOT NULL DEFAULT '' COMMENT '图片说明',
+  `version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '乐观并发版本',
+  `is_deleted` BOOLEAN NOT NULL DEFAULT FALSE COMMENT '可恢复删除状态',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_media_resource` (`resource_key`),
-  UNIQUE KEY `uq_media_filename` (`file_name`),
-  UNIQUE KEY `uq_media_relative_path` (`relative_path`),
+  KEY `idx_media_filename` (`file_name`),
+  KEY `idx_media_relative_path` (`relative_path`),
   KEY `idx_media_sha256` (`sha256`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
@@ -53,6 +61,9 @@ CREATE TABLE IF NOT EXISTS `page_sections` (
   `is_visible` BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否向访客展示',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '板块创建时间',
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '板块最近维护时间',
+  `category_id` VARCHAR(64) NULL COMMENT '产品目录的类别稳定标识',
+  `version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '乐观并发版本',
+  `is_deleted` BOOLEAN NOT NULL DEFAULT FALSE COMMENT '可恢复删除状态',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_section_key` (`page_id`, `section_key`),
   KEY `idx_sections_order` (`page_id`, `is_visible`, `sort_order`, `id`),
@@ -67,6 +78,10 @@ CREATE TABLE IF NOT EXISTS `product_categories` (
   `description` VARCHAR(200) NOT NULL COMMENT '类别定位及适用方向',
   `sort_order` SMALLINT UNSIGNED NOT NULL COMMENT '产品类别显示顺序',
   `is_visible` BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否显示该类别',
+  `media_id` VARCHAR(96) NULL COMMENT '类别图片',
+  `icon` VARCHAR(96) NOT NULL DEFAULT 'CircuitBoard' COMMENT '类别图标',
+  `version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '乐观并发版本',
+  `is_deleted` BOOLEAN NOT NULL DEFAULT FALSE COMMENT '可恢复删除状态',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_categories_slug` (`slug`),
   KEY `idx_categories_order` (`is_visible`, `sort_order`, `id`)
@@ -78,7 +93,7 @@ CREATE TABLE IF NOT EXISTS `products` (
   `category_id` VARCHAR(64) NOT NULL COMMENT '产品所属的真实唯一类别',
   `name` VARCHAR(128) NOT NULL COMMENT '示例产品名称',
   `subtitle` VARCHAR(180) NOT NULL COMMENT '产品特性短句',
-  `description` VARCHAR(255) NOT NULL COMMENT '产品技术用途说明',
+  `description` TEXT NOT NULL COMMENT '产品技术用途说明',
   `primary_media_id` VARCHAR(96) NOT NULL COMMENT '与本产品一对一关联的唯一主图',
   `specifications_json` JSON NOT NULL COMMENT '供同页产品弹窗读取的技术方向说明',
   `features_json` JSON NOT NULL COMMENT '本产品具有区分度的展示要点',
@@ -87,12 +102,82 @@ CREATE TABLE IF NOT EXISTS `products` (
   `is_visible` BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否在产品页显示',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '产品记录创建时间',
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '产品内容维护时间',
+  `model` VARCHAR(120) NOT NULL DEFAULT '' COMMENT '产品型号',
+  `tags_json` JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT '稳定条目标识的展示标签',
+  `gallery_json` JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT '辅助图片资源列表',
+  `icon` VARCHAR(96) NOT NULL DEFAULT 'CircuitBoard' COMMENT '产品图标',
+  `version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '乐观并发版本',
+  `is_deleted` BOOLEAN NOT NULL DEFAULT FALSE COMMENT '可恢复删除状态',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_products_slug` (`slug`),
-  UNIQUE KEY `uq_products_media` (`primary_media_id`),
+  KEY `idx_products_media` (`primary_media_id`),
   KEY `idx_products_category_order` (`category_id`, `is_visible`, `sort_order`, `id`),
   CONSTRAINT `fk_products_category` FOREIGN KEY (`category_id`) REFERENCES `product_categories` (`id`) ON UPDATE CASCADE ON DELETE RESTRICT,
   CONSTRAINT `fk_products_media` FOREIGN KEY (`primary_media_id`) REFERENCES `media_assets` (`id`) ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+-- 管理账户、会话、历史与发布记录同业务数据一起保存在 MySQL。
+CREATE TABLE IF NOT EXISTS `admin_users` (
+  `id` VARCHAR(64) NOT NULL,
+  `username` VARCHAR(80) NOT NULL,
+  `password_hash` VARCHAR(255) NOT NULL,
+  `must_change_password` BOOLEAN NOT NULL DEFAULT TRUE,
+  `session_version` INT UNSIGNED NOT NULL DEFAULT 1,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_admin_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `admin_sessions` (
+  `session_id` VARCHAR(128) NOT NULL,
+  `expires` INT UNSIGNED NOT NULL,
+  `data` MEDIUMTEXT NOT NULL,
+  PRIMARY KEY (`session_id`),
+  KEY `idx_session_expires` (`expires`)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `content_revisions` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `resource_type` VARCHAR(32) NOT NULL,
+  `resource_id` VARCHAR(96) NOT NULL,
+  `version` INT UNSIGNED NOT NULL,
+  `snapshot_json` JSON NOT NULL,
+  `actor_id` VARCHAR(64) NULL,
+  `operation_id` VARCHAR(96) NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_revision_version` (`resource_type`,`resource_id`,`version`),
+  KEY `idx_revision_resource` (`resource_type`,`resource_id`,`id`)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `audit_logs` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `actor_id` VARCHAR(64) NULL,
+  `action` VARCHAR(32) NOT NULL,
+  `resource_type` VARCHAR(32) NOT NULL,
+  `resource_id` VARCHAR(96) NOT NULL,
+  `operation_id` VARCHAR(96) NOT NULL,
+  `request_id` VARCHAR(96) NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_operation` (`operation_id`)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `media_versions` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `media_id` VARCHAR(96) NOT NULL,
+  `sha256` CHAR(64) NOT NULL,
+  `metadata_json` JSON NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_media_version` (`media_id`,`sha256`),
+  CONSTRAINT `fk_version_media` FOREIGN KEY (`media_id`) REFERENCES `media_assets` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `schema_versions` (
+  `version` INT UNSIGNED NOT NULL,
+  `applied_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`version`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 -- 设置只包含已确认的项目署名，以及明确说明为示例的企业占位名称。

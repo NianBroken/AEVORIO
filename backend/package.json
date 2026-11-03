@@ -16,21 +16,39 @@
     "verify:live": "tsx scripts/verify-live-api.ts",
     "audit:delivery": "tsx scripts/audit-delivery.ts",
     "content:manage": "tsx scripts/maintain-content.ts",
-    "start": "node dist/src/server.js"
+    "start": "node dist/src/server.js",
+    "db:migrate": "tsx scripts/migrate-admin.ts",
+    "site:backup": "tsx scripts/backup-site.ts",
+    "site:restore": "tsx scripts/restore-site.ts",
+    "admin:account": "tsx scripts/admin-account.ts",
+    "admin:build": "npm --prefix admin-ui run build",
+    "coverage:report": "tsx scripts/report-coverage.ts",
+    "test:browser:prepare": "tsx scripts/browser-verification.ts",
+    "test:browser:cleanup": "tsx scripts/browser-verification.ts --cleanup"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.2.2",
     "dotenv": "^17.2.3",
     "express": "^5.3.0",
+    "express-mysql-session": "^3.0.3",
+    "express-rate-limit": "^8.7.3",
+    "express-session": "^1.19.0",
+    "helmet": "^8.3.0",
+    "multer": "^2.5.0",
     "mysql2": "^3.15.0",
     "sharp": "^0.35.5",
     "zod": "^4.1.12"
   },
   "overrides": {
-    "minimatch": "^11.0.1"
+    "minimatch": "^11.0.1",
+    "mysql2": "$mysql2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/express": "^5.0.6",
+    "@types/express-mysql-session": "^3.0.8",
+    "@types/express-session": "^1.19.0",
+    "@types/multer": "^2.3.0",
     "@types/node": "^24.10.0",
     "@types/supertest": "^6.0.3",
     "eslint": "^10.14.0",

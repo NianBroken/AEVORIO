@@ -1,4 +1,6 @@
 import { defineConfig } from '@playwright/test';
+// 工作进程由测试运行器设置终端颜色，移除继承的冲突配置。
+delete process.env.NO_COLOR;
 
 // 浏览器基准尺寸以同一个 1440 逻辑画布为准，单测与正式服务均通过真实接口。
 const baseURL = process.env.AEVORIO_E2E_BASE_URL ?? 'http://127.0.0.1:3000';
@@ -8,10 +10,23 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  reporter: [['list'], ['json', { outputFile: 'reports/browser-test-report.json' }]],
+  reporter: [
+    ['list'],
+    ['json', { outputFile: 'reports/browser-test-report.json' }],
+  ],
   projects: [
     { name: 'website', testMatch: ['site.spec.ts', 'failure-state.spec.ts'] },
-    { name: 'maintenance', testMatch: 'maintenance.spec.ts', dependencies: ['website'] },
+    { name: 'admin', testMatch: 'admin.spec.ts', dependencies: ['website'] },
+    {
+      name: 'maintenance',
+      testMatch: 'maintenance.spec.ts',
+      dependencies: ['admin'],
+    },
+    {
+      name: 'coverage',
+      testMatch: 'coverage.spec.ts',
+      dependencies: ['maintenance'],
+    },
   ],
   use: {
     baseURL,

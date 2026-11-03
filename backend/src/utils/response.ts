@@ -1,5 +1,5 @@
-import type { Response } from 'express';
-import type { ApiEnvelope } from '../types/site';
+import type { Response } from "express";
+import type { ApiEnvelope } from "../types/site";
 
 export function sendSuccess<T>(
   response: Response,
@@ -17,7 +17,9 @@ export function sendFailure(
   code: number,
   message: string,
 ): void {
-  response.status(httpStatus).json(buildEnvelope(code, requestId, message, null));
+  response
+    .status(httpStatus)
+    .json(buildEnvelope(code, requestId, message, null));
 }
 
 function buildEnvelope<T>(

@@ -1,75 +1,136 @@
-import { ArrowUpRight, CircuitBoard } from 'lucide-react';
-import Link from 'next/link';
-import type { ReactNode } from 'react';
-import type { PageSlug, SiteSettings } from '../lib/site-types';
+import Link from "next/link";
+import Image from "next/image";
+import type { CSSProperties, ReactNode } from "react";
+import type { PageSlug, SiteSettings } from "../lib/site-types";
+import { ContentProvider } from "./ContentProvider";
+import { ManagedIcon } from "./ManagedIcon";
 
-const NAV_ITEMS: Array<{ href: string; label: string; slug: PageSlug }> = [
-  { href: '/', label: '首页', slug: 'home' },
-  { href: '/products', label: '产品介绍', slug: 'products' },
-  { href: '/about', label: '关于我们', slug: 'about' },
-];
-
-interface PageLayoutProps {
+// 公共展示只读取已发布配置，三个正式地址属于程序路由规则。
+export function PageLayout({
+  children,
+  companyName,
+  currentPage,
+  settings,
+}: {
   children: ReactNode;
   companyName: string;
   currentPage: PageSlug;
   settings: SiteSettings;
-}
-
-// 页眉、三个正式路由与页脚使用同一组数据库配置和名称。
-export function PageLayout({ children, companyName, currentPage, settings }: PageLayoutProps) {
+}) {
+  const value = (key: string) => String(settings.content?.[key] ?? "");
+  const navigation = [
+    { href: "/", slug: "home", label: value("navHome") },
+    { href: "/products", slug: "products", label: value("navProducts") },
+    { href: "/about", slug: "about", label: value("navAbout") },
+  ];
+  const logo = settings.media?.find((m) => m.id === value("logo"));
+  const variables = Object.fromEntries(
+    [
+      "paper",
+      "paperSoft",
+      "paperWhite",
+      "ink",
+      "inkMuted",
+      "line",
+      "forest",
+      "forestDeep",
+      "clay",
+      "copper",
+      "sky",
+      "sage",
+    ].map((k) => [
+      "--" + k.replace(/[A-Z]/gu, (c) => "-" + c.toLowerCase()),
+      value(k),
+    ]),
+  );
+  const font =
+    value("font") === "serif"
+      ? 'Georgia, "SimSun", serif'
+      : value("font") === "sans"
+        ? '"Segoe UI", "Microsoft YaHei", sans-serif'
+        : '"Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif';
   return (
-    <>
-      <a className="skip-link" href="#main-content">跳至当前页面主要内容</a>
-      <header className="site-header">
-        <Link aria-label={`${companyName}首页`} className="wordmark" href="/">
-          <span className="wordmark-symbol" aria-hidden="true"><CircuitBoard size={21} strokeWidth={1.7} /></span>
-          <span className="wordmark-copy">
-            <span className="wordmark-name">{companyName}</span>
-            <span className="wordmark-meta">PCB / HARDWARE ENGINEERING</span>
-          </span>
-        </Link>
-
-        <nav aria-label="网站主导航" className="primary-nav">
-          {NAV_ITEMS.map((item) => (
-            <Link
-              aria-current={currentPage === item.slug ? 'page' : undefined}
-              className={`nav-link${currentPage === item.slug ? ' nav-link-current' : ''}`}
-              href={item.href}
-              key={item.slug}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-
-        <a className="header-project-note" href="#page-end">
-          <span>工程实践</span>
-          <ArrowUpRight aria-hidden="true" size={16} strokeWidth={1.8} />
+    <ContentProvider settings={settings}>
+      <div
+        className="managed-site"
+        data-decoration={value("decoration")}
+        style={{ ...variables, fontFamily: font } as CSSProperties}
+      >
+        <a className="skip-link" href="#main-content">
+          {value("skipLink")}
         </a>
-      </header>
-
-      <main id="main-content">{children}</main>
-
-      <footer className="site-footer" id="page-end">
-        <div className="footer-topline" />
-        <div className="footer-content">
-          <div className="footer-company">
-            <CircuitBoard aria-hidden="true" size={20} strokeWidth={1.7} />
-            <div>
-              <p>{companyName}</p>
-              <span>项目示例内容，可依照真实资料独立更新</span>
-            </div>
-          </div>
-          <nav aria-label="页脚导航" className="footer-nav">
-            {NAV_ITEMS.map((item) => <Link href={item.href} key={item.slug}>{item.label}</Link>)}
+        <header className="site-header">
+          <Link
+            aria-label={companyName + value("homeSuffix")}
+            className="wordmark"
+            href="/"
+          >
+            <span className="wordmark-symbol" aria-hidden="true">
+              {logo ? (
+                <Image
+                  alt={logo.altText}
+                  src={logo.url}
+                  width={28}
+                  height={28}
+                  unoptimized
+                />
+              ) : (
+                <ManagedIcon name={value("logoIcon")} size={21} />
+              )}
+            </span>
+            <span className="wordmark-copy">
+              <span className="wordmark-name">{companyName}</span>
+              <span className="wordmark-meta">{value("brandTagline")}</span>
+            </span>
+          </Link>
+          <nav aria-label={value("navLabel")} className="primary-nav">
+            {navigation.map((item) => (
+              <Link
+                aria-current={currentPage === item.slug ? "page" : undefined}
+                className={`nav-link${currentPage === item.slug ? " nav-link-current" : ""}`}
+                href={item.href}
+                key={item.slug}
+              >
+                {item.label}
+              </Link>
+            ))}
           </nav>
-          <span className="footer-attribution">{settings.projectName} / {settings.author}</span>
-        </div>
-        <p className="footer-note">
-          展示产品、服务和协作内容均为可编辑示例，不表示已量产、取得认证或存在实际合作承诺。
-        </p>
-      </footer>
-    </>
+          <a className="header-project-note" href="#page-end">
+            <span>{value("headerNote")}</span>
+            <ManagedIcon name={value("headerIcon")} size={16} aria-hidden />
+          </a>
+        </header>
+        <main id="main-content">{children}</main>
+        <footer className="site-footer" id="page-end">
+          <div className="footer-topline" />
+          <div className="footer-content">
+            <div className="footer-company">
+              <ManagedIcon name={value("footerIcon")} size={20} aria-hidden />
+              <div>
+                <p>{companyName}</p>
+                <span>{value("footerSummary")}</span>
+              </div>
+            </div>
+            <nav aria-label={value("footerNavLabel")} className="footer-nav">
+              {navigation.map((item) => (
+                <Link href={item.href} key={item.slug}>
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+            <span className="footer-attribution">
+              {settings.projectName} / {settings.author}
+            </span>
+          </div>
+          <p className="footer-note">{value("footerNote")}</p>
+          {value("copyright") && (
+            <p className="footer-note">{value("copyright")}</p>
+          )}
+          {value("contact") && (
+            <p className="footer-note">{value("contact")}</p>
+          )}
+        </footer>
+      </div>
+    </ContentProvider>
   );
 }

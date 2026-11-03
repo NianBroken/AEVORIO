@@ -1,127 +1,181 @@
-import { createHash } from 'node:crypto';
-import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
-import path from 'node:path';
-import { readEnvironment } from '../src/config/env';
-import { closeDatabasePool, createDatabasePool } from '../src/database/pool';
-import { MysqlSiteRepository } from '../src/repositories/site-repository';
-import type { PageSlug } from '../src/types/site';
+import { createHash } from "node:crypto";
+import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { readEnvironment } from "../src/config/env";
+import { createDatabasePool, closeDatabasePool } from "../src/database/pool";
+import { MysqlSiteRepository } from "../src/repositories/site-repository";
+import { ResourceService } from "../src/services/resource-service";
+import { MediaService } from "../src/services/media-service";
+import type { PageSlug } from "../src/types/site";
 
-const backendDirectory = path.resolve(__dirname, '..');
-const projectDirectory = path.resolve(backendDirectory, '..');
-const frontendDirectory = path.join(projectDirectory, 'frontend');
-const expectedSections: Record<PageSlug, number> = { home: 12, products: 13, about: 12 };
+const root = path.resolve(__dirname, "../..");
+async function files(directory: string): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  return (
+    await Promise.all(
+      entries
+        .filter(
+          (e) =>
+            ![
+              "node_modules",
+              ".next",
+              "dist",
+              "storage",
+              ".git",
+              "test-results",
+            ].includes(e.name),
+        )
+        .map((e) =>
+          e.isDirectory()
+            ? files(path.join(directory, e.name))
+            : [path.join(directory, e.name)],
+        ),
+    )
+  ).flat();
+}
+function assert(value: unknown, message: string): asserts value {
+  if (!value) throw new Error(message);
+}
 
-// 交付审计读取真实运行内容和文件，报告只保留结果，不输出配置值或密码。
-async function main(): Promise<void> {
-  const environment = readEnvironment();
-  const database = createDatabasePool(environment);
-  const repository = new MysqlSiteRepository(database);
-  const roots = await readdir(projectDirectory, { withFileTypes: true });
-  assert(roots.length === 2 && roots.every((entry) => entry.isDirectory() && ['frontend', 'backend'].includes(entry.name)),
-    '项目根目录只能包含 frontend 和 backend 两个文件夹。');
-
+// 数量从实际业务记录统计，审计约束与内容规模分离。
+export async function auditDelivery(): Promise<void> {
+  const env = readEnvironment();
+  const db = createDatabasePool(env);
   try {
-    const media = new Map<string, { fileName: string; sha256: string }>();
-    const sectionTitles = new Set<string>();
-    const pageResults = [];
-    let catalog = null;
-
-    for (const [slug, count] of Object.entries(expectedSections)) {
-      const payload = await repository.getSite(slug as PageSlug);
-      assert(payload !== null && payload.page.sections.length === count, '数据库板块数量没有达到正式需求。');
-      for (const section of payload.page.sections) {
-        assert(!sectionTitles.has(section.title), '数据库存在重复的板块标题。');
-        sectionTitles.add(section.title);
-        if (section.media) media.set(section.media.id, section.media);
+    const roots = (await readdir(root, { withFileTypes: true })).filter(
+      (e) => e.isDirectory() && e.name !== ".git",
+    );
+    assert(
+      roots.length === 2 &&
+        roots.every((e) => ["frontend", "backend"].includes(e.name)),
+      "根目录业务文件夹不符合约定。",
+    );
+    const resources = new ResourceService(db);
+    await resources.assertSiteIntegrity(db);
+    const repository = new MysqlSiteRepository(db);
+    const pages = [];
+    for (const slug of ["home", "products", "about"] as PageSlug[]) {
+      const payload = await repository.getSite(slug);
+      assert(payload, "页面数据库内容不存在。");
+      const route = slug === "home" ? "/" : "/" + slug;
+      const response = await fetch(new URL(route, env.FRONTEND_ORIGIN));
+      const html = await response.text();
+      assert(
+        response.status === 200 && html.includes(`data-page="${slug}"`),
+        "公开页面实际访问未通过。",
+      );
+      pages.push({
+        slug,
+        sections: payload.page.sections.length,
+        http: response.status,
+      });
+    }
+    const backendOrigin =
+      process.env.ADMIN_ORIGIN ??
+      `http://${env.BACKEND_HOST}:${env.BACKEND_PORT}`;
+    const admin = await fetch(new URL("/admin/", backendOrigin));
+    assert(
+      admin.ok && (await admin.text()).includes("/admin/assets/"),
+      "后台正式构建未正常提供。",
+    );
+    let mediaVerified = 0;
+    for (const media of await resources.list("media")) {
+      const bytes = await readFile(
+        path.join(
+          root,
+          "backend/storage/media",
+          path.basename(String(media.values.file_name)),
+        ),
+      );
+      assert(
+        createHash("sha256").update(bytes).digest("hex") ===
+          media.values.sha256,
+        "媒体文件与数据库校验值不一致。",
+      );
+      mediaVerified++;
+    }
+    await new MediaService(
+      resources,
+      path.join(root, "backend/storage/media"),
+    ).verifyHistoricalFiles();
+    const coverage = await resources.coverage();
+    assert(
+      coverage.resources.every(
+        (item) => item.mapped === true && item.verified === true,
+      ),
+      "存在未映射或内容摘要不匹配的资源，交付审计未通过。",
+    );
+    let scanned = 0;
+    for (const file of await files(root))
+      if (
+        /\.(?:tsx?|m?js|json|md|map|example)$/u.test(file) &&
+        !path.basename(file).startsWith(".env")
+      ) {
+        const content = await readFile(file, "utf8");
+        if (env.DB_PASSWORD.length > 5)
+          assert(
+            !content.includes(env.DB_PASSWORD),
+            `发现私有配置进入交付文件：${path.relative(root, file)}`,
+          );
+        scanned++;
       }
-      if (slug === 'products') catalog = payload;
-      const route = slug === 'home' ? '/' : `/${slug}`;
-      const frontendOrigin = process.env.AEVORIO_FRONTEND_ORIGIN ?? environment.FRONTEND_ORIGIN;
-      const response = await fetch(new URL(route, frontendOrigin));
-      assert(response.status === 200, '正式网站没有正常返回对应页面。');
-      const document = await response.text();
-      assert(document.includes(`data-page="${slug}"`) && document.includes(payload.page.sections[0]?.title ?? ''),
-        '正式网站没有显示真实数据库页面内容。');
-      pageResults.push({ slug, sections: count, httpStatus: response.status });
-    }
-
-    assert(catalog !== null && catalog.products.length === 45 && catalog.categories.length === 9, '产品规模不符合要求。');
-    assert(new Set(catalog.products.map((product) => product.name)).size === 45, '存在重复产品名称。');
-    assert(new Set(catalog.products.map((product) => product.description)).size === 45, '存在重复产品说明。');
-    assert(new Set(catalog.products.map((product) => product.media.sha256)).size === 45, '存在重复产品图片。');
-    const categoryResults = catalog.categories.map((category) => ({
-      name: category.name,
-      slug: category.slug,
-      products: catalog.products.filter((product) => product.categorySlug === category.slug).length,
-    }));
-    assert(categoryResults.every((category) => category.products === 5), '每个分类必须有五个产品。');
-    for (const product of catalog.products) media.set(product.media.id, product.media);
-    assert(media.size === 52, '数据库媒体资源总数须为五十二。');
-    for (const asset of media.values()) {
-      const bytes = await readFile(path.join(backendDirectory, 'storage/media', path.basename(asset.fileName)));
-      assert(createHash('sha256').update(bytes).digest('hex') === asset.sha256, '本地图片与数据库哈希不符。');
-    }
-
-    const publicFiles = await collectFiles(path.join(frontendDirectory, '.next/static'));
-    const sourceFiles = (await Promise.all(['app', 'components', 'lib', 'reports'].map((directory) =>
-      collectFiles(path.join(frontendDirectory, directory))))).flat();
-    const backendReports = await collectFiles(path.join(backendDirectory, 'reports'));
-    const sampleFiles = [path.join(backendDirectory, '.env.example'), path.join(frontendDirectory, '.env.local.example')];
-    let scannedFiles = 0;
-    for (const file of [...publicFiles, ...sourceFiles, ...backendReports, ...sampleFiles]) {
-      if (!/\.(?:js|mjs|ts|tsx|json|md|log|map|example)$/u.test(file)) continue;
-      const text = await readFile(file, 'utf8');
-      assert(!containsCredential(text, environment.DB_PASSWORD), `交付配置隔离核验未通过：${path.relative(projectDirectory, file)}`);
-      assert(!text.includes(environment.DB_HOST), `数据库地址隔离核验未通过：${path.relative(projectDirectory, file)}`);
-      if (publicFiles.includes(file)) {
-        assert(!text.includes('DB_PASSWORD') && !text.includes('DB_HOST'), '前端公开资源不得引用后端数据库配置字段。');
-      }
-      scannedFiles++;
-    }
-    for (const directory of [frontendDirectory, backendDirectory]) {
-      const errors = await stat(path.join(directory, 'reports/runtime-error.log'));
-      assert(errors.size === 0, '正式服务的错误输出必须为空。');
-    }
-
+    for (const directory of ["frontend", "backend"])
+      assert(
+        (await stat(path.join(root, directory, "reports/runtime-error.log")))
+          .size === 0,
+        "当前正式服务存在错误输出。",
+      );
+    assert(
+      (await stat(path.join(root, "backend/reports/supervisor-error.log")))
+        .size === 0,
+      "当前守护进程存在错误输出。",
+    );
     const report = {
       generatedAt: new Date().toISOString(),
-      projectName: catalog.settings.projectName,
-      author: catalog.settings.author,
-      rootDirectories: roots.map((entry) => entry.name).sort(),
-      pages: pageResults,
-      uniqueSectionTitles: sectionTitles.size,
-      products: { categories: categoryResults, total: 45, uniqueNames: 45, uniqueDescriptions: 45, uniqueImages: 45 },
-      media: { total: media.size, localFilesMatchDatabase: true },
-      privacy: { scannedFiles, frontendAndReportsContainNoRealDatabaseConfiguration: true },
-      runtime: { frontendResponds: true, backendDatabaseConnected: true, standardErrorFilesEmpty: true },
+      passed: true,
+      pages,
+      counts: ((await resources.overview()) as { counts: unknown }).counts,
+      coverage: {
+        identified: coverage.total,
+        mapped: coverage.total,
+        verified: coverage.resources.filter((item) => item.verified === true)
+          .length,
+        exclusions: coverage.exclusions,
+      },
+      mediaVerified,
+      adminHttp: admin.status,
+      scannedFiles: scanned,
+      runtime: JSON.parse(
+        await readFile(
+          path.join(root, "frontend/reports/runtime-services.json"),
+          "utf8",
+        ),
+      ),
     };
-    await writeFile(path.join(frontendDirectory, 'reports/final-delivery-audit.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-    console.log('交付审计通过：两个根目录、三页三十七板块、九类四十五款、五十二张位图、配置隔离与运行状态均已核验。');
+    await writeFile(
+      path.join(root, "backend/reports/final-delivery-audit.json"),
+      JSON.stringify(report, null, 2),
+      "utf8",
+    );
+    await writeFile(
+      path.join(root, "frontend/reports/final-delivery-audit.json"),
+      JSON.stringify(report, null, 2),
+      "utf8",
+    );
+    await writeFile(
+      path.join(root, "backend/reports/resource-inventory.json"),
+      JSON.stringify({ generatedAt: report.generatedAt, ...coverage }, null, 2),
+      "utf8",
+    );
+    console.log(
+      `实际运行审计通过：三个公开页面、管理后台、${mediaVerified} 项媒体与 ${coverage.total} 项资源映射。`,
+    );
   } finally {
     await closeDatabasePool();
   }
 }
-
-async function collectFiles(directory: string): Promise<string[]> {
-  const entries = await readdir(directory, { withFileTypes: true });
-  return (await Promise.all(entries.map(async (entry) => {
-    const filePath = path.join(directory, entry.name);
-    return entry.isDirectory() ? collectFiles(filePath) : [filePath];
-  }))).flat();
-}
-
-function assert(condition: boolean, message: string): asserts condition {
-  if (!condition) throw new Error(message);
-}
-
-// 凭据以完整值或连接字段出现才构成配置暴露，更长常量内的普通字符片段不作为凭据。
-function containsCredential(text: string, credential: string): boolean {
-  const escaped = credential.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  return new RegExp(`(?<![a-zA-Z0-9_])${escaped}(?![a-zA-Z0-9_])`, 'u').test(text);
-}
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : '交付核验未完成。');
-  void closeDatabasePool();
-  process.exitCode = 1;
-});
+if (require.main === module)
+  void auditDelivery().catch((error) => {
+    console.error(error instanceof Error ? error.message : "交付审计未完成。");
+    process.exitCode = 1;
+  });

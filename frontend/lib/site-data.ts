@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import type { PageSlug, SitePayload } from './site-types';
-
-const PAGE_SECTION_COUNTS: Record<PageSlug, number> = { home: 12, products: 13, about: 12 };
+import { rememberSettings } from './site-fallback';
+import { headers } from 'next/headers';
 
 export type SiteResult =
   | { ok: true; data: SitePayload; error: null }
@@ -22,15 +22,24 @@ export async function fetchSitePage(slug: PageSlug): Promise<SiteResult> {
     const envelope: unknown = await response.json();
 
     if (!isRecord(envelope) || typeof envelope.Messages !== 'string') {
-      return { ok: false, data: null, error: '网页数据暂时无法读取，请确认后端服务正在运行。' };
+      return {
+        ok: false,
+        data: null,
+        error: '网页数据暂时无法读取，请确认后端服务正在运行。',
+      };
     }
     if (!response.ok || envelope.Code !== 0) {
       return { ok: false, data: null, error: envelope.Messages };
     }
     if (!isSitePayload(envelope.Data, slug)) {
-      return { ok: false, data: null, error: '页面内容的结构尚未完成初始化，请核对后端网站数据。' };
+      return {
+        ok: false,
+        data: null,
+        error: '页面内容的结构尚未完成初始化，请核对后端网站数据。',
+      };
     }
 
+    await rememberSettings(envelope.Data.settings);
     return { ok: true, data: envelope.Data, error: null };
   } catch {
     return {
@@ -43,35 +52,70 @@ export async function fetchSitePage(slug: PageSlug): Promise<SiteResult> {
 
 // 元数据从与页面相同的实时数据库内容中读取，同时在离线时安全使用示例名称。
 export async function makePageMetadata(slug: PageSlug): Promise<Metadata> {
+  const requestHeaders = await headers();
+  const siteOrigin =
+    process.env.FRONTEND_ORIGIN ??
+    `${requestHeaders.get('x-forwarded-proto') ?? 'http'}://${requestHeaders.get('x-forwarded-host') ?? requestHeaders.get('host')}`;
   const result = await fetchSitePage(slug);
-  const companyName = result.ok ? result.data.settings.companyName : '企业名称（示例）';
+  const companyName = result.ok
+    ? result.data.settings.companyName
+    : '企业名称（示例）';
   const title = result.ok ? result.data.page.title : '企业硬件与电路板工程';
   const description = result.ok
     ? result.data.page.description
     : '企业名称（示例）从事 PCB 电路板、嵌入式硬件与工程技术探索。';
 
   return {
+    metadataBase: new URL(siteOrigin),
     title: `${companyName}｜${title}`,
     description,
+    openGraph: result.ok
+      ? {
+          title: result.data.page.ogTitle || title,
+          description: result.data.page.ogDescription || description,
+          images: result.data.page.ogMedia
+            ? [result.data.page.ogMedia.url]
+            : result.data.settings.media
+                ?.filter(
+                  (m) =>
+                    m.id === result.data.settings.content?.defaultShareImage,
+                )
+                .map((m) => m.url),
+        }
+      : undefined,
+    icons:
+      result.ok && result.data.settings.content?.favicon
+        ? {
+            icon: result.data.settings.media?.find(
+              (m) => m.id === result.data.settings.content?.favicon,
+            )?.url,
+          }
+        : undefined,
   };
 }
 
 function isSitePayload(value: unknown, slug: PageSlug): value is SitePayload {
-  if (!isRecord(value) || !isRecord(value.settings) || !isRecord(value.page)) return false;
-  if (value.page.slug !== slug || typeof value.page.title !== 'string') return false;
-  if (!Array.isArray(value.page.sections) || value.page.sections.length !== PAGE_SECTION_COUNTS[slug]) return false;
+  if (!isRecord(value) || !isRecord(value.settings) || !isRecord(value.page))
+    return false;
+  if (value.page.slug !== slug || typeof value.page.title !== 'string')
+    return false;
+  if (!Array.isArray(value.page.sections) || value.page.sections.length < 10)
+    return false;
   if (typeof value.settings.companyName !== 'string') return false;
 
-  const allSectionsHaveContent = value.page.sections.every((section) =>
-    isRecord(section)
-    && typeof section.sectionKey === 'string'
-    && typeof section.title === 'string'
-    && typeof section.description === 'string'
-    && isRecord(section.content));
+  const allSectionsHaveContent = value.page.sections.every(
+    (section) =>
+      isRecord(section) &&
+      typeof section.sectionKey === 'string' &&
+      typeof section.title === 'string' &&
+      typeof section.description === 'string' &&
+      isRecord(section.content),
+  );
   if (!allSectionsHaveContent) return false;
 
-  if (!Array.isArray(value.categories) || !Array.isArray(value.products)) return false;
-  return slug !== 'products' || (value.categories.length === 9 && value.products.length === 45);
+  if (!Array.isArray(value.categories) || !Array.isArray(value.products))
+    return false;
+  return true;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
