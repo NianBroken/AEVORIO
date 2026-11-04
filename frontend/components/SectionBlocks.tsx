@@ -178,6 +178,7 @@ function HeroBlock({ section }: ContentSectionProps) {
 
 function EditorialBlock({ section }: ContentSectionProps) {
   const points = readStringList(section.content, "points");
+  const pointIcon = readText(section.content, "arrowIcon");
 
   return (
     <section
@@ -205,12 +206,28 @@ function EditorialBlock({ section }: ContentSectionProps) {
           <p className="editorial-standfirst">{section.subtitle}</p>
         )}
         <p>{section.description}</p>
+        {pointIcon && points.length === 0 && (
+          <ManagedIcon
+            className="editorial-content-icon"
+            name={pointIcon}
+            aria-hidden
+            size={22}
+          />
+        )}
         {points.length > 0 && (
           <ul className="detail-points">
             {points.map((point, index) => (
               <li key={`${index}-${point}`}>
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 {point}
+                {pointIcon && (
+                  <ManagedIcon
+                    className="detail-point-icon"
+                    name={pointIcon}
+                    aria-hidden
+                    size={15}
+                  />
+                )}
               </li>
             ))}
           </ul>

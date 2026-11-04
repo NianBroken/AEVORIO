@@ -64,12 +64,12 @@ export const ICON_NAMES = [
   "Sparkles",
 ];
 export const RESOURCE_NAMES: Record<ResourceType, string> = {
-  settings: "公共内容",
-  pages: "页面设置",
-  sections: "页面板块",
+  settings: "全局内容",
+  pages: "页面信息",
+  sections: "页面模块",
   products: "产品",
   categories: "产品类别",
-  media: "媒体资源",
+  media: "图片文件",
 };
 export const SECTION_NAMES: Record<string, string> = {
   hero: "页面首屏",
@@ -91,6 +91,12 @@ export const SECTION_NAMES: Record<string, string> = {
   quote: "工程引言",
   closing: "结尾导航",
 };
+export const PROTECTED_SECTION_TYPES = new Set([
+  "hero",
+  "closing",
+  "category-overview",
+  "product-matrix",
+]);
 export const INITIAL_PUBLIC_CONTENT: Values = {
   brandTagline: "PCB / HARDWARE ENGINEERING",
   skipLink: "跳至当前页面主要内容",

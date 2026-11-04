@@ -72,6 +72,22 @@ export async function finalizeAdminData(
       ["site-favicon"],
     );
   }
+  const [unversionedMedia] = await db.query<
+    import("mysql2/promise").RowDataPacket[]
+  >(
+    "SELECT m.* FROM media_assets m LEFT JOIN media_versions v ON v.media_id=m.id AND v.sha256=m.sha256 WHERE v.media_id IS NULL",
+  );
+  for (const media of unversionedMedia) {
+    const bytes = await readFile(
+      path.resolve("storage/media", path.basename(String(media.file_name))),
+    );
+    if (createHash("sha256").update(bytes).digest("hex") !== media.sha256)
+      throw new Error("媒体当前文件校验失败，历史版本未建立。");
+    await db.execute(
+      "INSERT IGNORE INTO media_versions(media_id,sha256,metadata_json) VALUES(?,?,?)",
+      [media.id, media.sha256, JSON.stringify(media)],
+    );
+  }
   await db.execute(
     "UPDATE page_sections SET content_json=JSON_SET(content_json,'$.note',?) WHERE section_type='hero' AND JSON_EXTRACT(content_json,'$.note') IS NULL",
     ["DESIGN / CIRCUIT / PRACTICE"],

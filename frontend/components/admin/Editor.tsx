@@ -41,6 +41,7 @@ export function Editor({
   categories,
   pages,
   onSaved,
+  onMediaUploaded,
   onClose,
 }: {
   record: ResourceRecord;
@@ -48,6 +49,7 @@ export function Editor({
   categories: ResourceRecord[];
   pages: ResourceRecord[];
   onSaved: (record: ResourceRecord) => void;
+  onMediaUploaded: (record: ResourceRecord) => void;
   onClose: () => void;
 }) {
   const [values, setValues] = useState<Values>(() =>
@@ -120,30 +122,26 @@ export function Editor({
       setBusy(false);
     }
   };
-  const upload = async (file: File, replacement = false) => {
+  const upload = async (file: File): Promise<ResourceRecord | null> => {
     setBusy(true);
     try {
       const body = new FormData();
       body.set("file", file);
       body.set("operationId", crypto.randomUUID());
-      if (replacement) {
-        body.set("replaceId", record.id);
-        body.set("version", String(record.version));
-      }
-      const updated = await api<ResourceRecord>("/media/uploads", "POST", body);
-      message.success(
-        replacement ? "图片已替换并发布。" : "图片已保存到媒体库。",
+      const uploaded = await api<ResourceRecord>(
+        "/media/uploads",
+        "POST",
+        body,
       );
-      if (replacement) {
-        setValues(updated.values);
-        onSaved(updated);
-      } else onSaved(record);
+      onMediaUploaded(uploaded);
+      message.success("图片已上传，可在当前字段中使用。");
+      return uploaded;
     } catch (error) {
       message.error((error as Error).message);
+      return null;
     } finally {
       setBusy(false);
     }
-    return false;
   };
   const loadHistory = async (page = 1) => {
     setHistoryLoading(true);
@@ -265,7 +263,7 @@ export function Editor({
       );
     if (field.kind === "image")
       return (
-        <>
+        <div className="inline-media-field">
           <Select
             {...common}
             allowClear
@@ -275,14 +273,29 @@ export function Editor({
             options={options}
             onChange={(v) => change(field.key, v ?? "")}
           />
+          <Upload
+            accept=".png,.jpg,.jpeg,.webp"
+            showUploadList={false}
+            beforeUpload={(file) => {
+              void upload(file).then((uploaded) => {
+                if (uploaded) change(field.key, uploaded.id);
+              });
+              return false;
+            }}
+          >
+            <Button disabled={busy}>上传图片</Button>
+          </Upload>
           {value && (
-            <NextImage unoptimized width={160} height={100}
+            <NextImage
+              unoptimized
+              width={160}
+              height={100}
               className="field-image"
               src={`/media/${media.find((m) => m.id === value)?.values.file_name ?? ""}`}
               alt={field.label}
             />
           )}
-        </>
+        </div>
       );
     if (field.kind === "icon")
       return (
@@ -300,6 +313,18 @@ export function Editor({
             ]}
             onChange={(v) => change(field.key, v)}
           />
+          <Upload
+            accept=".png,.jpg,.jpeg,.webp"
+            showUploadList={false}
+            beforeUpload={(file) => {
+              void upload(file).then((uploaded) => {
+                if (uploaded) change(field.key, `media:${uploaded.id}`);
+              });
+              return false;
+            }}
+          >
+            <Button disabled={busy}>上传图标</Button>
+          </Upload>
           <IconPreview name={String(value ?? "")} />
         </div>
       );
@@ -319,6 +344,19 @@ export function Editor({
           value={Array.isArray(value) ? value : []}
           onChange={(v) => change(field.key, v)}
           options={field.key === "gallery_json" ? options : undefined}
+          onUpload={
+            field.key === "gallery_json"
+              ? async (file, index) => {
+                  const uploaded = await upload(file);
+                  if (!uploaded) return;
+                  const next = Array.isArray(getValue(values, field.key))
+                    ? [...(getValue(values, field.key) as JsonValue[])]
+                    : [];
+                  next[index] = uploaded.id;
+                  change(field.key, next);
+                }
+              : undefined
+          }
         />
       );
     if (field.kind === "longtext")
@@ -497,26 +535,6 @@ export function Editor({
         <aside className="editor-preview">
           <span className="eyebrow">当前内容与修改预览</span>
           <h3>{record.title}</h3>
-          {record.type === "media" && (
-            <>
-              <NextImage unoptimized width={160} height={100}
-                className="large-preview"
-                src={`/media/${record.values.file_name}?v=${record.version}`}
-                alt={String(values.alt_text ?? "")}
-              />
-              <p>
-                {String(values.width)} × {String(values.height)} /{" "}
-                {Math.round(Number(values.file_size) / 1024)} KB
-              </p>
-              <Upload
-                accept=".png,.jpg,.jpeg,.webp"
-                showUploadList={false}
-                beforeUpload={(f) => upload(f, true)}
-              >
-                <Button loading={busy}>替换图片并发布</Button>
-              </Upload>
-            </>
-          )}
           {record.fields
             .filter(
               (f) =>
@@ -564,11 +582,13 @@ function ListField({
   value,
   onChange,
   options,
+  onUpload,
 }: {
   field: FieldDefinition;
   value: JsonValue[];
   onChange: (value: JsonValue[]) => void;
   options?: Array<{ value: string; label: string }>;
+  onUpload?: (file: File, index: number) => Promise<void>;
 }) {
   const update = (index: number, text: string) =>
     onChange(
@@ -598,12 +618,26 @@ function ListField({
           }
         >
           {options ? (
-            <Select
-              aria-label={`${field.label}第${index + 1}项`}
-              value={String(item)}
-              options={options}
-              onChange={(v) => update(index, v)}
-            />
+            <Space>
+              <Select
+                aria-label={`${field.label}第${index + 1}项`}
+                value={String(item)}
+                options={options}
+                onChange={(v) => update(index, v)}
+              />
+              {onUpload && (
+                <Upload
+                  accept=".png,.jpg,.jpeg,.webp"
+                  showUploadList={false}
+                  beforeUpload={(file) => {
+                    void onUpload(file, index);
+                    return false;
+                  }}
+                >
+                  <Button>上传图片</Button>
+                </Upload>
+              )}
+            </Space>
           ) : (
             <Input
               aria-label={`${field.label}第${index + 1}项`}

@@ -1,5 +1,4 @@
 "use client";
-import NextImage from "next/image";
 import { PASSWORD_PATTERN, PASSWORD_MESSAGE } from "../../../shared/password";
 import { lazy, Suspense, useEffect, useState, useRef, useEffectEvent } from "react";
 import {
@@ -19,7 +18,6 @@ import {
   ArrowUpRight,
   CircuitBoard,
   FileText,
-  Image,
   Layers,
   LogOut,
   Package,
@@ -59,25 +57,47 @@ const Table = lazy(
 import "./styles.css";
 
 type User = { id: string; username: string; mustChange: boolean };
-type View = "overview" | "coverage" | ResourceType;
+type View = "overview" | "global" | "home" | "products" | "about" | "personal";
+const PAGE_SLUGS: Partial<Record<View, string>> = {
+  home: "home",
+  products: "products",
+  about: "about",
+};
+const VIEW_RESOURCES: Partial<Record<View, ResourceType[]>> = {
+  global: ["settings"],
+  home: ["sections", "pages"],
+  products: ["sections", "products", "categories", "pages"],
+  about: ["sections", "pages"],
+};
+const DEFAULT_RESOURCE: Partial<Record<View, ResourceType>> = {
+  global: "settings",
+  home: "sections",
+  products: "sections",
+  about: "sections",
+};
+const RESOURCE_TAB_NAMES: Partial<Record<ResourceType, string>> = {
+  settings: "公共内容",
+  sections: "页面模块",
+  products: "产品资料",
+  categories: "产品类别",
+  pages: "页面信息",
+};
 const MENU: Array<{ key: View; label: string; icon: typeof CircuitBoard }> = [
-  { key: "overview", label: "工作概览", icon: Activity },
-  { key: "sections", label: "页面内容", icon: FileText },
-  { key: "products", label: "产品管理", icon: Package },
-  { key: "categories", label: "产品类别", icon: Layers },
-  { key: "media", label: "媒体资源", icon: Image },
-  { key: "settings", label: "公共内容", icon: Settings },
-  { key: "pages", label: "页面与分享", icon: FileText },
-  { key: "coverage", label: "资源覆盖", icon: ShieldCheck },
+  { key: "overview", label: "概览", icon: Activity },
+  { key: "global", label: "全局内容设置", icon: Settings },
+  { key: "home", label: "公司首页设置", icon: FileText },
+  { key: "products", label: "产品介绍设置", icon: Package },
+  { key: "about", label: "关于我们设置", icon: Layers },
+  { key: "personal", label: "个人设置", icon: ShieldCheck },
 ];
 function Application() {
   const refreshTicket = useRef(0);
   const [frontendOrigin, setFrontendOrigin] = useState("");
-  const [passwordOpen, setPasswordOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
   const [view, setView] = useState<View>("overview");
+  const [resourceView, setResourceView] = useState<ResourceType>("settings");
   const [items, setItems] = useState<ResourceRecord[]>([]);
   const [media, setMedia] = useState<ResourceRecord[]>([]);
   const [categories, setCategories] = useState<ResourceRecord[]>([]);
@@ -98,18 +118,6 @@ function Application() {
       username: string;
     }>;
   } | null>(null);
-  const [coverage, setCoverage] = useState<{
-    total: number;
-    resources: Array<{
-      key: string;
-      label: string;
-      type: ResourceType;
-      verified: boolean;
-      id: string;
-      adminPath: string;
-    }>;
-    exclusions: string[];
-  } | null>(null);
   const [creating, setCreating] = useState(false);
   const { message, modal } = App.useApp();
   const { stageRef, scale, height } = useScaledCanvas();
@@ -126,18 +134,33 @@ function Application() {
   useEffect(() => {
     if (!user || user.mustChange) return;
     const match =
-      /^#\/(settings|pages|sections|products|categories|media)\/([^/]+)$/u.exec(
+      /^#\/(settings|pages|sections|products|categories)\/([^/]+)$/u.exec(
         window.location.hash,
       );
     if (!match) return;
     let active = true;
     const type = match[1] as ResourceType;
-    queueMicrotask(() => { if (active) setView(type); });
     void api<ResourceRecord>(
       `/resources/${type}/${encodeURIComponent(decodeURIComponent(match[2]!))}`,
     )
-      .then((item) => {
-        if (active) setRecord(item);
+      .then(async (item) => {
+        if (!active) return;
+        setRecord(item);
+        setResourceView(type);
+        if (type === "settings") setView("global");
+        else if (type === "products" || type === "categories")
+          setView("products");
+        else {
+          const pageRows = await loadResources("pages");
+          const slug =
+            type === "pages"
+              ? String(item.values.slug ?? "")
+              : String(
+                  pageRows.find((page) => page.id === String(item.values.page_id))
+                    ?.values.slug ?? "home",
+                );
+          setView(slug === "products" ? "products" : slug === "about" ? "about" : "home");
+        }
       })
       .catch((e) => {
         if (active) setError((e as Error).message);
@@ -150,30 +173,51 @@ function Application() {
     if (e instanceof ApiError && e.status === 401) setUser(null);
     setError((e as Error).message);
   };
-  const refresh = async (target: View = view) => {
+  const refresh = async (
+    target: View = view,
+    targetResource: ResourceType = resourceView,
+  ) => {
     const ticket = ++refreshTicket.current;
     setBusy(true);
     setError("");
     try {
-      const refs = await Promise.all(
-        ["media", "categories", "pages"].map((type) =>
-          loadResources(type as ResourceType),
-        ),
-      );
-      if (ticket !== refreshTicket.current) return;
-      setMedia(refs[0]!);
-      setCategories(refs[1]!);
-      setPages(refs[2]!);
       if (target === "overview") {
         const data = await api<NonNullable<typeof overview>>("/overview");
         if (ticket === refreshTicket.current) setOverview(data);
-      } else if (target === "coverage") {
-        const data = await api<NonNullable<typeof coverage>>("/coverage");
-        if (ticket === refreshTicket.current) setCoverage(data);
-      } else {
-        const data = await loadResources(target, deleted);
+      } else if (target !== "personal") {
+        const [mediaRows, categoryRows, pageRows] = await Promise.all([
+          loadResources("media"),
+          loadResources("categories"),
+          loadResources("pages"),
+        ]);
+        if (ticket !== refreshTicket.current) return;
+        setMedia(mediaRows);
+        setCategories(categoryRows);
+        setPages(pageRows);
+        const data = await loadResources(targetResource, deleted);
         if (ticket === refreshTicket.current) setItems(data);
       }
+    } catch (e) {
+      if (ticket === refreshTicket.current) handleError(e);
+    } finally {
+      if (ticket === refreshTicket.current) setBusy(false);
+    }
+  };
+  const beginCreate = async () => {
+    const ticket = ++refreshTicket.current;
+    setBusy(true);
+    setError("");
+    try {
+      const [mediaRows, categoryRows, pageRows] = await Promise.all([
+        loadResources("media"),
+        loadResources("categories"),
+        loadResources("pages"),
+      ]);
+      if (ticket !== refreshTicket.current) return;
+      setMedia(mediaRows);
+      setCategories(categoryRows);
+      setPages(pageRows);
+      setCreating(true);
     } catch (e) {
       if (ticket === refreshTicket.current) handleError(e);
     } finally {
@@ -183,7 +227,7 @@ function Application() {
   const refreshView = useEffectEvent(() => { if (user && !user.mustChange) void refresh(); });
   useEffect(() => {
     queueMicrotask(() => refreshView());
-  }, [view, user?.id, user?.mustChange, deleted]);
+  }, [view, resourceView, user?.id, user?.mustChange, deleted]);
   const open = async (type: ResourceType, id: string) => {
     try {
       setRecord(await api(`/resources/${type}/${encodeURIComponent(id)}`));
@@ -196,6 +240,7 @@ function Application() {
       setRecord(null);
       setQuery("");
       setFilter("");
+      if (DEFAULT_RESOURCE[target]) setResourceView(DEFAULT_RESOURCE[target]!);
       setView(target);
     };
     if (record)
@@ -218,21 +263,12 @@ function Application() {
       handleError(e);
     }
   };
-  const upload = async (file: File) => {
-    setBusy(true);
-    try {
-      const data = new FormData();
-      data.set("file", file);
-      data.set("operationId", crypto.randomUUID());
-      await api("/media/uploads", "POST", data);
-      message.success("图片已保存到媒体库。");
-      await refresh();
-    } catch (e) {
-      handleError(e);
-    } finally {
-      setBusy(false);
-    }
-    return false;
+  const chooseResource = (target: ResourceType) => {
+    setRecord(null);
+    setQuery("");
+    setFilter("");
+    setDeleted(false);
+    setResourceView(target);
   };
   const remove = (item: ResourceRecord) =>
     modal.confirm({
@@ -255,11 +291,17 @@ function Application() {
       },
     });
   const exactId = items.some(
-    (item) => item.type === view && item.id === query.trim(),
+    (item) => item.type === resourceView && item.id === query.trim(),
   );
+  const pageSlug = PAGE_SLUGS[view];
+  const scopedPage = pages.find((page) => page.values.slug === pageSlug);
   const filtered = items.filter(
     (item) =>
-      item.type === view &&
+      item.type === resourceView &&
+      (resourceView !== "sections" ||
+        !scopedPage ||
+        String(item.values.page_id) === scopedPage.id) &&
+      (resourceView !== "pages" || !pageSlug || item.values.slug === pageSlug) &&
       (!query ||
         (exactId
           ? item.id === query.trim()
@@ -334,7 +376,7 @@ function Application() {
                   <span className="account-avatar">
                     {user.username.slice(0, 1).toUpperCase()}
                   </span>
-                  <Button type="text" onClick={() => setPasswordOpen(true)}>
+                  <Button type="text" onClick={() => navigate("personal")}>
                     {user.username}
                   </Button>
                   <Button
@@ -362,6 +404,12 @@ function Application() {
                     media={media}
                     categories={categories}
                     pages={pages}
+                    onMediaUploaded={(uploaded) =>
+                      setMedia((current) => [
+                        uploaded,
+                        ...current.filter((item) => item.id !== uploaded.id),
+                      ])
+                    }
                     onSaved={(updated) => {
                       setRecord({ ...updated, references: record.references });
                       void refresh();
@@ -402,7 +450,7 @@ function Application() {
                             <p>
                               三个公开页面，共享同一份内容来源。所有修改均保存历史，支持比较与恢复。
                             </p>
-                            <Button onClick={() => navigate("sections")}>
+                            <Button onClick={() => navigate("home")}>
                               管理页面内容 <ArrowUpRight size={15} />
                             </Button>
                           </div>
@@ -420,7 +468,18 @@ function Application() {
                               "media",
                             ] as ResourceType[]
                           ).map((type) => (
-                            <button key={type} onClick={() => navigate(type)}>
+                            <button
+                              key={type}
+                              onClick={() =>
+                                navigate(
+                                  type === "pages" || type === "sections"
+                                    ? "home"
+                                    : type === "products"
+                                      ? "products"
+                                      : "global",
+                                )
+                              }
+                            >
                               <span>{RESOURCE_NAMES[type]}</span>
                               <strong>{overview.counts[type]}</strong>
                               <small>
@@ -468,23 +527,18 @@ function Application() {
                           </section>
                           <section className="panel quick-links">
                             <h3>维护入口</h3>
-                            {(
-                              [
-                                "products",
-                                "media",
-                                "settings",
-                              ] as ResourceType[]
-                            ).map((type) => (
-                              <button key={type} onClick={() => navigate(type)}>
+                            {([
+                              { key: "products", label: "产品介绍设置", note: "产品说明、规格与主图" },
+                              { key: "home", label: "公司首页设置", note: "首页模块与页面信息" },
+                              { key: "global", label: "全局内容设置", note: "导航、页脚、主题与共享图标" },
+                            ] as const).map((item) => (
+                              <button
+                                key={item.key}
+                                onClick={() => navigate(item.key)}
+                              >
                                 <span>
-                                  {RESOURCE_NAMES[type]}
-                                  <small>
-                                    {type === "media"
-                                      ? "查看图片与引用位置"
-                                      : type === "settings"
-                                        ? "导航、页脚、主题与共享图标"
-                                        : "产品说明、规格与主图"}
-                                  </small>
+                                  {item.label}
+                                  <small>{item.note}</small>
                                 </span>
                                 <ArrowUpRight size={19} />
                               </button>
@@ -492,62 +546,23 @@ function Application() {
                           </section>
                         </div>
                       </>
-                    ) : view === "coverage" && coverage ? (
+                    ) : view === "personal" && user ? (
+                      <PersonalSettings user={user} onChanged={setUser} />
+                    ) : view !== "overview" ? (
                       <section className="panel">
-                        <div className="coverage-summary">
-                          <ShieldCheck size={32} />
-                          <div>
-                            <h2>{coverage.total} 项可维护字段与列表条目</h2>
-                            <p>
-                              最近一次验收通过{" "}
-                              {
-                                coverage.resources.filter((r) => r.verified)
-                                  .length
-                              }{" "}
-                              项。内容变更后以最新验收记录为准。
-                            </p>
-                          </div>
-                          <Tag color="green">编辑映射已建立</Tag>
-                        </div>
-                        <Table
-                          rowKey="key"
-                          dataSource={coverage.resources}
-                          pagination={{ pageSize: 12 }}
-                          columns={[
-                            { title: "资源", dataIndex: "label" },
-                            {
-                              title: "最近验收",
-                              dataIndex: "verified",
-                              render: (v) => (
-                                <Tag color={v ? "green" : "default"}>
-                                  {v ? "已验证" : "待验证当前内容"}
-                                </Tag>
-                              ),
-                            },
-                            {
-                              title: "稳定标识",
-                              dataIndex: "key",
-                              render: (v) => <code>{v}</code>,
-                            },
-                            {
-                              title: "管理入口",
-                              render: (_, r) => (
-                                <Button
-                                  onClick={() => {
-                                    setView(r.type);
-                                    void open(r.type, r.id);
-                                  }}
-                                >
-                                  打开编辑
-                                </Button>
-                              ),
-                            },
-                          ]}
-                        />
-                        <p>程序规则排除项：{coverage.exclusions.join("、")}</p>
-                      </section>
-                    ) : view !== "overview" && view !== "coverage" ? (
-                      <section className="panel">
+                        {(VIEW_RESOURCES[view]?.length ?? 0) > 1 && (
+                          <nav className="resource-tabs" aria-label="页面管理内容">
+                            {VIEW_RESOURCES[view]!.map((type) => (
+                              <button
+                                key={type}
+                                className={resourceView === type ? "active" : ""}
+                                onClick={() => chooseResource(type)}
+                              >
+                                {RESOURCE_TAB_NAMES[type]}
+                              </button>
+                            ))}
+                          </nav>
+                        )}
                         <div className="list-toolbar">
                           <Space>
                             <Input
@@ -558,7 +573,7 @@ function Application() {
                               onChange={(e) => setQuery(e.target.value)}
                               allowClear
                             />
-                            {view === "products" && (
+                            {resourceView === "products" && (
                               <Select
                                 aria-label="筛选产品类别"
                                 placeholder="全部类别"
@@ -572,68 +587,21 @@ function Application() {
                                 }))}
                               />
                             )}{" "}
-                            {view === "sections" && (
-                              <Select
-                                aria-label="筛选页面"
-                                placeholder="全部页面"
-                                allowClear
-                                style={{ width: 180 }}
-                                value={filter || undefined}
-                                onChange={(v) => setFilter(v ?? "")}
-                                options={pages.map((p) => ({
-                                  value: p.id,
-                                  label: p.title,
-                                }))}
-                              />
-                            )}
                           </Space>
                           <Space>
-                            {view === "media" && (
-                              <Button
-                                onClick={() =>
-                                  modal.confirm({
-                                    title: "清理未引用文件",
-                                    content:
-                                      "保留当前资源与全部历史文件，只清理上传失败等操作留下的无引用文件。",
-                                    okText: "执行清理",
-                                    cancelText: "取消",
-                                    onOk: async () => {
-                                      try {
-                                        const result = await api<{
-                                          removed: string[];
-                                        }>("/media/cleanup", "POST");
-                                        message.success(
-                                          `已清理 ${result.removed.length} 个未引用文件。`,
-                                        );
-                                      } catch (e) {
-                                        handleError(e);
-                                      }
-                                    },
-                                  })
-                                }
-                              >
-                                安全清理
-                              </Button>
-                            )}
                             <Button onClick={() => setDeleted(!deleted)}>
                               {deleted ? "查看正常记录" : "查看可恢复记录"}
                             </Button>
-                            {view === "media" ? (
-                              <Upload
-                                accept=".png,.jpg,.jpeg,.webp"
-                                showUploadList={false}
-                                beforeUpload={upload}
-                              >
-                                <Button type="primary">上传图片</Button>
-                              </Upload>
-                            ) : ["products", "categories", "sections"].includes(
-                                view,
-                              ) ? (
+                            {["products", "categories", "sections"].includes(
+                              resourceView,
+                            ) ? (
                               <Button
                                 type="primary"
-                                onClick={() => setCreating(true)}
+                                loading={busy}
+                                disabled={busy}
+                                onClick={() => void beginCreate()}
                               >
-                                创建{RESOURCE_NAMES[view]}
+                                创建{RESOURCE_NAMES[resourceView]}
                               </Button>
                             ) : null}
                           </Space>
@@ -652,12 +620,6 @@ function Application() {
                               title: "资源名称",
                               render: (_, item) => (
                                 <div className="resource-name">
-                                  {view === "media" && (
-                                    <NextImage unoptimized width={160} height={100}
-                                      src={`/media/${item.values.file_name}?v=${item.version}`}
-                                      alt={String(item.values.alt_text)}
-                                    />
-                                  )}
                                   <div>
                                     <strong>{item.title}</strong>
                                     <small>{item.id}</small>
@@ -703,7 +665,7 @@ function Application() {
                                   >
                                     编辑
                                   </Button>
-                                  {!["settings", "pages"].includes(view) &&
+                                  {!["settings", "pages"].includes(resourceView) &&
                                     !item.deleted && (
                                       <Button
                                         type="text"
@@ -730,28 +692,19 @@ function Application() {
             </div>
           </>
         )}
-        <Modal
-          title="修改管理密码"
-          open={passwordOpen}
-          footer={null}
-          onCancel={() => setPasswordOpen(false)}
-          destroyOnHidden
-        >
-          {passwordOpen && (
-            <PasswordChange
-              onChanged={(changed) => {
-                setUser(changed);
-                setPasswordOpen(false);
-              }}
-            />
-          )}
-        </Modal>
         {creating && (
           <CreateDialog
-            type={view as ResourceType}
+            type={resourceView}
             categories={categories}
             media={media}
             pages={pages}
+            pageId={scopedPage?.id}
+            onMediaUploaded={(uploaded) =>
+              setMedia((current) => [
+                uploaded,
+                ...current.filter((item) => item.id !== uploaded.id),
+              ])
+            }
             onClose={() => setCreating(false)}
             onCreated={(item) => {
               setCreating(false);
@@ -785,7 +738,7 @@ function Login({
           更新有序。
         </h1>
         <p>
-          管理页面、产品和媒体资源。
+          管理全站内容、页面模块与管理员账户。
           <br />
           每一次发布，都能追溯和恢复。
         </p>
@@ -846,6 +799,117 @@ function Login({
     </div>
   );
 }
+function PersonalSettings({
+  user,
+  onChanged,
+}: {
+  user: User;
+  onChanged: (user: User) => void;
+}) {
+  const [accountForm] = Form.useForm();
+  const [passwordForm] = Form.useForm();
+  const [busy, setBusy] = useState(false);
+  const { message } = App.useApp();
+  return (
+    <div className="personal-settings">
+      <section className="panel">
+        <div className="panel-heading">
+          <h2>管理员账号</h2>
+        </div>
+        <Form
+          form={accountForm}
+          layout="vertical"
+          initialValues={{ username: user.username }}
+          onFinish={async (values) => {
+            setBusy(true);
+            try {
+              const result = await api<{ user: User }>(
+                "/auth/account",
+                "PATCH",
+                values,
+              );
+              onChanged(result.user);
+              accountForm.resetFields(["currentPassword"]);
+              message.success("管理员账号已更新。");
+            } catch (error) {
+              message.error((error as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <Form.Item
+            name="username"
+            label="管理员账号"
+            rules={[{ required: true, whitespace: true, max: 80 }]}
+          >
+            <Input autoComplete="username" maxLength={80} />
+          </Form.Item>
+          <Form.Item
+            name="currentPassword"
+            label="当前密码"
+            rules={[{ required: true }]}
+          >
+            <Input.Password autoComplete="current-password" />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" loading={busy}>
+            保存账号
+          </Button>
+        </Form>
+      </section>
+      <section className="panel">
+        <div className="panel-heading">
+          <h2>账号安全</h2>
+        </div>
+        <Form
+          form={passwordForm}
+          layout="vertical"
+          onFinish={async (values) => {
+            setBusy(true);
+            try {
+              const result = await api<{ user: User }>(
+                "/auth/password",
+                "PATCH",
+                values,
+              );
+              onChanged(result.user);
+              passwordForm.resetFields();
+              message.success("管理密码已更新，其他旧会话已失效。");
+            } catch (error) {
+              message.error((error as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <Form.Item
+            name="currentPassword"
+            label="当前密码"
+            rules={[{ required: true }]}
+          >
+            <Input.Password autoComplete="current-password" />
+          </Form.Item>
+          <Form.Item
+            name="newPassword"
+            label="新密码"
+            rules={[
+              {
+                required: true,
+                pattern: PASSWORD_PATTERN,
+                message: PASSWORD_MESSAGE,
+              },
+            ]}
+          >
+            <Input.Password autoComplete="new-password" />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" loading={busy}>
+            更新密码
+          </Button>
+        </Form>
+      </section>
+    </div>
+  );
+}
 function PasswordChange({ onChanged }: { onChanged: (user: User) => void }) {
   const { message } = App.useApp();
   const [busy, setBusy] = useState(false);
@@ -899,6 +963,8 @@ function CreateDialog({
   categories,
   media,
   pages,
+  pageId,
+  onMediaUploaded,
   onClose,
   onCreated,
 }: {
@@ -906,12 +972,37 @@ function CreateDialog({
   categories: ResourceRecord[];
   media: ResourceRecord[];
   pages: ResourceRecord[];
+  pageId?: string;
+  onMediaUploaded: (record: ResourceRecord) => void;
   onClose: () => void;
   onCreated: (record: ResourceRecord) => void;
 }) {
   const [form] = Form.useForm();
   const [busy, setBusy] = useState(false);
+  const [customSectionType, setCustomSectionType] = useState(false);
   const { message } = App.useApp();
+  const uploadImage = (file: File) => {
+    void (async () => {
+      setBusy(true);
+      try {
+        const body = new FormData();
+        body.set("file", file);
+        body.set("operationId", crypto.randomUUID());
+        const uploaded = await api<ResourceRecord>(
+          "/media/uploads",
+          "POST",
+          body,
+        );
+        onMediaUploaded(uploaded);
+        form.setFieldValue("media", uploaded.id);
+        message.success("图片已上传并关联到当前表单。");
+      } catch (error) {
+        message.error((error as Error).message);
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
   return (
     <Modal
       open
@@ -957,7 +1048,10 @@ function CreateDialog({
                 : {
                     page_id: Number(input.page),
                     section_key: "section-" + crypto.randomUUID(),
-                    section_type: input.sectionType,
+                    section_type:
+                      input.sectionType === "custom"
+                        ? String(input.customSectionType).trim()
+                        : input.sectionType,
                     title: input.name,
                     subtitle: input.subtitle ?? "",
                     description: input.description,
@@ -998,6 +1092,8 @@ function CreateDialog({
             rules={[{ required: true }]}
           >
             <Select
+              showSearch
+              optionFilterProp="label"
               options={categories.map((c) => ({ value: c.id, label: c.title }))}
             />
           </Form.Item>
@@ -1008,17 +1104,25 @@ function CreateDialog({
               name="page"
               label="所属页面"
               rules={[{ required: true }]}
+              initialValue={pageId}
             >
               <Select
-                options={pages.map((p) => ({ value: p.id, label: p.title }))}
+                disabled={Boolean(pageId)}
+                options={pages
+                  .filter((page) => !pageId || page.id === pageId)
+                  .map((p) => ({ value: p.id, label: p.title }))}
               />
             </Form.Item>
             <Form.Item
               name="sectionType"
-              label="板块结构"
+              label="模块类型"
               initialValue="editorial"
+              rules={[{ required: true }]}
             >
               <Select
+                showSearch
+                optionFilterProp="label"
+                onChange={(value) => setCustomSectionType(value === "custom")}
                 options={Object.entries(SECTION_NAMES)
                   .filter(
                     ([key]) =>
@@ -1029,22 +1133,59 @@ function CreateDialog({
                         "category-overview",
                       ].includes(key),
                   )
-                  .map(([value, label]) => ({ value, label }))}
+                  .map(([value, label]) => ({ value, label }))
+                  .concat([{ value: "custom", label: "自定义类型" }])}
               />
             </Form.Item>
+            {customSectionType && (
+              <Form.Item
+                name="customSectionType"
+                label="自定义类型名称"
+                rules={[
+                  { required: true, whitespace: true, max: 48 },
+                  {
+                    validator: async (_, value) => {
+                      if (String(value ?? "").trim().length <= 48) return;
+                      throw new Error("模块类型最多 48 个字符。");
+                    },
+                  },
+                ]}
+              >
+                <Input maxLength={48} />
+              </Form.Item>
+            )}
           </>
         )}
         <Form.Item
-          name="media"
           label="图片"
-          rules={[{ required: type === "products" }]}
+          required={type === "products"}
         >
-          <Select
-            showSearch
-            optionFilterProp="label"
-            allowClear
-            options={media.map((m) => ({ value: m.id, label: m.title }))}
-          />
+          <Space>
+            <Form.Item
+              name="media"
+              noStyle
+              rules={[{ required: type === "products" }]}
+            >
+              <Select
+                aria-label="图片"
+                showSearch
+                optionFilterProp="label"
+                allowClear
+                style={{ minWidth: 250 }}
+                options={media.map((m) => ({ value: m.id, label: m.title }))}
+              />
+            </Form.Item>
+            <Upload
+              accept=".png,.jpg,.jpeg,.webp"
+              showUploadList={false}
+              beforeUpload={(file) => {
+                uploadImage(file);
+                return false;
+              }}
+            >
+              <Button disabled={busy}>上传并使用</Button>
+            </Upload>
+          </Space>
         </Form.Item>
       </Form>
     </Modal>

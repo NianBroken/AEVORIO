@@ -7,6 +7,7 @@ import { createDatabasePool, closeDatabasePool } from "../src/database/pool";
 import { hashPassword } from "../src/services/password-service";
 import { ResourceService } from "../src/services/resource-service";
 import { secureDirectory } from "../src/utils/private-storage";
+import { PROTECTED_SECTION_TYPES } from "../../shared/content";
 
 const USERNAME = "browser-verification";
 const TEST_TITLES = new Set([
@@ -32,8 +33,13 @@ void (async () => {
       (item) => TEST_TITLES.has(item.title),
     );
     const categoryIds = new Set(categories.map((item) => item.id));
-    for (const type of ["products", "sections", "categories"] as const) {
+    for (const type of ["products", "sections"] as const) {
       for (const item of await resources.list(type)) {
+        if (
+          type === "sections" &&
+          PROTECTED_SECTION_TYPES.has(String(item.values.section_type))
+        )
+          continue;
         if (
           !TEST_TITLES.has(item.title) &&
           !(
@@ -51,6 +57,26 @@ void (async () => {
           true,
         );
       }
+    }
+    for (const category of categories) {
+      let current = await resources.get("categories", category.id);
+      if (current.deleted)
+        current = await resources.save(
+          "categories",
+          current.id,
+          { version: current.version, changes: {} },
+          context(),
+          "restore",
+          false,
+        );
+      await resources.save(
+        "categories",
+        current.id,
+        { version: current.version, changes: {} },
+        context(),
+        "delete",
+        true,
+      );
     }
     const [users] = await database.execute<RowDataPacket[]>(
       "SELECT id FROM admin_users WHERE username=?",

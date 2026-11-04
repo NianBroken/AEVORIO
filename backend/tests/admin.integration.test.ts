@@ -169,11 +169,98 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
     }
   });
   it('类别详情列出关联产品和目录板块', async () => {
-    const category = (await management.list('categories'))[0]!;
+    const products = await management.list('products');
+    const sections = await management.list('sections');
+    const category = (await management.list('categories')).find(
+      (item) =>
+        products.some((product) => product.values.category_id === item.id) &&
+        sections.some(
+          (section) =>
+            section.values.section_type === 'product-matrix' &&
+            section.values.category_id === item.id,
+        ),
+    )!;
     const response = await agent.get('/api/v1/admin/resources/categories/' + category.id);
     expect(response.status).toBe(200);
     expect(response.body.Data.references.some((item: {type:string}) => item.type === 'products')).toBe(true);
     expect(response.body.Data.references.some((item: {type:string}) => item.type === 'sections')).toBe(true);
+  });
+  it('自定义模块类型可创建、改名和删除，类型长度由服务端限制', async () => {
+    const hero = (await management.list('sections')).find(
+      (item) => item.values.section_type === 'hero',
+    )!;
+    expect(
+      hero.fields.find((field) => field.key === 'section_type')?.readonly,
+    ).toBe(true);
+    await expect(
+      management.create(
+        'sections',
+        {
+          page_id: 1,
+          section_type: 'product-matrix',
+          title: '受保护模块',
+          description: '不能通过自定义模块接口创建系统模块。',
+        },
+        operation(),
+      ),
+    ).rejects.toThrow(/系统模块类型/u);
+    const section = await management.create(
+      'sections',
+      {
+        page_id: 1,
+        section_type: 'custom-research-note',
+        title: '自定义模块验证',
+        subtitle: '',
+        description: '自定义模块使用安全的通用展示结构。',
+        content_json: {},
+        media_id: null,
+        category_id: null,
+        sort_order: 99,
+        is_visible: true,
+      },
+      operation(),
+    );
+    expect(section.values.section_type).toBe('custom-research-note');
+    expect(section.values.content_json).toMatchObject({
+      label: 'custom-research-note',
+      points: [],
+    });
+    expect(
+      section.fields.find((field) => field.key === 'section_type')?.readonly,
+    ).toBe(false);
+    const renamed = await management.save(
+      'sections',
+      section.id,
+      {
+        version: section.version,
+        changes: { section_type: 'custom-field-note' },
+      },
+      operation(),
+    );
+    expect(renamed.values.section_type).toBe('custom-field-note');
+    const deleted = await management.save(
+      'sections',
+      section.id,
+      { version: renamed.version, changes: {} },
+      operation(),
+      'delete',
+      true,
+    );
+    expect(deleted.deleted).toBe(true);
+    const invalid = await agent
+      .post('/api/v1/admin/resources/sections')
+      .set('Origin', origin)
+      .set('X-CSRF-Token', csrf)
+      .send({
+        operationId: randomUUID(),
+        values: {
+          page_id: 1,
+          section_type: 'x'.repeat(49),
+          title: '无效类型',
+          description: '类型超过允许长度。',
+        },
+      });
+    expect(invalid.status).toBe(400);
   });
   it('保存立即更新公开读取，并且版本冲突不会覆盖已发布内容', async () => {
     const product = (await management.list('products'))[0]!;
@@ -449,6 +536,9 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
         await new MysqlSiteRepository(database).getSite('products')
       )?.page.sections.some((s) => s.categoryId === category.id),
     ).toBe(true);
+    const categorySection = (await management.list('sections')).find(
+      (section) => section.values.category_id === category.id,
+    )!;
     const item = await management.create(
       'products',
       {
@@ -487,13 +577,37 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
       'delete',
       true,
     );
-    await management.save(
+    const deletedCategory = await management.save(
       'categories',
       category.id,
       { version: category.version, changes: {} },
       operation(),
       'delete',
       true,
+    );
+    expect(
+      (await management.list('sections')).some(
+        (section) => section.id === categorySection.id,
+      ),
+    ).toBe(false);
+    expect((await management.get('sections', categorySection.id)).deleted).toBe(
+      true,
+    );
+    await management.save(
+      'categories',
+      category.id,
+      { version: deletedCategory.version, changes: {} },
+      operation(),
+      'restore',
+      false,
+    );
+    expect(
+      (await management.list('sections')).some(
+        (section) => section.id === categorySection.id,
+      ),
+    ).toBe(true);
+    expect((await management.get('sections', categorySection.id)).deleted).toBe(
+      false,
     );
     await expect(
       management.create('products', { name: '缺少必填项' }, operation()),
@@ -733,5 +847,57 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
       if (response.status === 429) limited = true;
     }
     expect(limited).toBe(true);
+  });
+  it('管理员账号修改校验密码和重名，并更新当前会话版本', async () => {
+    const id = randomUUID();
+    const username = 'account-' + id.slice(0, 8);
+    const nextUsername = 'renamed-' + id.slice(0, 8);
+    const accountPassword = randomUUID() + randomUUID();
+    await database.execute(
+      'INSERT INTO admin_users(id,username,password_hash,must_change_password) VALUES(?,?,?,0)',
+      [id, username, await hashPassword(accountPassword)],
+    );
+    const accountApp = createApp({ database, mediaDirectory: mediaRoot });
+    const first = request.agent(accountApp);
+    const second = request.agent(accountApp);
+    const login = async (
+      client: ReturnType<typeof request.agent>,
+    ) => {
+      const token = (await client.get('/api/v1/admin/auth/session')).body.Data
+        .csrfToken;
+      return client
+        .post('/api/v1/admin/auth/login')
+        .set('Origin', origin)
+        .set('X-CSRF-Token', token)
+        .send({ username, password: accountPassword });
+    };
+    expect((await login(first)).status).toBe(200);
+    expect((await login(second)).status).toBe(200);
+    const token = (await first.get('/api/v1/admin/auth/session')).body.Data
+      .csrfToken;
+    const duplicate = await first
+      .patch('/api/v1/admin/auth/account')
+      .set('Origin', origin)
+      .set('X-CSRF-Token', token)
+      .send({ username: 'integration', currentPassword: accountPassword });
+    expect(duplicate.status).toBe(409);
+    const wrongPassword = await first
+      .patch('/api/v1/admin/auth/account')
+      .set('Origin', origin)
+      .set('X-CSRF-Token', token)
+      .send({ username: nextUsername, currentPassword: 'incorrect-password' });
+    expect(wrongPassword.status).toBe(401);
+    const changed = await first
+      .patch('/api/v1/admin/auth/account')
+      .set('Origin', origin)
+      .set('X-CSRF-Token', token)
+      .send({ username: nextUsername, currentPassword: accountPassword });
+    expect(changed.status).toBe(200);
+    expect(changed.body.Data.user.username).toBe(nextUsername);
+    expect(
+      (await first.get('/api/v1/admin/auth/session')).body.Data.user.username,
+    ).toBe(nextUsername);
+    expect((await first.get('/api/v1/admin/overview')).status).toBe(200);
+    expect((await second.get('/api/v1/admin/overview')).status).toBe(401);
   });
 });

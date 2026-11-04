@@ -550,7 +550,7 @@ img {
 
 .detail-points li {
   display: grid;
-  grid-template-columns: 30px 1fr;
+  grid-template-columns: 30px 1fr auto;
   align-items: baseline;
   color: var(--ink);
   font-size: 13px;
@@ -560,6 +560,15 @@ img {
   color: var(--clay);
   font-family: "Segoe UI", sans-serif;
   font-size: 10px;
+}
+
+.detail-point-icon {
+  color: var(--forest);
+}
+
+.editorial-content-icon {
+  margin-top: 18px;
+  color: var(--forest);
 }
 
 .feature-strip-block {

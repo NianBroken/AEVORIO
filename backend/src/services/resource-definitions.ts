@@ -1,6 +1,7 @@
 import {
   INITIAL_PUBLIC_CONTENT,
   PUBLIC_LABELS,
+  PROTECTED_SECTION_TYPES,
   SECTION_NAMES,
   type FieldDefinition,
   type ResourceType,
@@ -22,6 +23,7 @@ export const ENTITIES = {
     title: "title",
     columns: [
       "title",
+      "slug",
       "meta_description",
       "og_title",
       "og_description",
@@ -114,13 +116,13 @@ const LABELS: Record<string, string> = {
   page_id: "所属页面",
   section_key: "稳定板块标识",
   section_type: "板块类型",
+  slug: "稳定标识",
   subtitle: "副标题",
   description: "详细说明",
   media_id: "图片",
   category_id: "所属类别",
   sort_order: "显示顺序",
   is_visible: "公开显示",
-  slug: "稳定标识",
   name: "名称",
   model: "产品型号",
   primary_media_id: "主图",
@@ -214,7 +216,10 @@ export function fieldsFor(
       const readonly =
         (type === "media" &&
           !["resource_key", "alt_text", "caption"].includes(key)) ||
-        ["section_key", "section_type", "slug", "page_id"].includes(key);
+        ["section_key", "slug", "page_id"].includes(key) ||
+        (type === "sections" &&
+          key === "section_type" &&
+          PROTECTED_SECTION_TYPES.has(String(values.section_type)));
       const columnLimits: Record<string, number> = {
         title: type === "pages" ? 120 : 180,
         meta_description: 255,
@@ -251,6 +256,7 @@ export function fieldsFor(
           "resource_key",
           "alt_text",
           "primary_media_id",
+          "section_type",
         ].includes(key),
       });
     }
@@ -306,7 +312,7 @@ export function publicDefaults(): Values {
 // 创建板块时只提供与实际布局对应的字段，列表条目由管理员维护稳定标识。
 export function sectionDefaults(type: string): Values {
   const result: Values = {
-    label: SECTION_NAMES[type] ?? "内容",
+    label: SECTION_NAMES[type] ?? type,
     style: "default",
     background: "",
     backgroundMedia: "",

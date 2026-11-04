@@ -156,6 +156,7 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
             apiOrigin +
             new URL(route.request().url()).pathname +
             new URL(route.request().url()).search,
+          maxRetries: 2,
         }),
       });
     });
@@ -465,12 +466,20 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
               : field.kind === "boolean"
                 ? !original
                 : (Number(original) + 1) % 65535;
-          const changed = await service.save(
-            type,
-            current.id,
-            { version: current.version, changes: { [field.key]: value } },
-            ctx(),
-          );
+          let changed: ResourceRecord;
+          try {
+            changed = await service.save(
+              type,
+              current.id,
+              { version: current.version, changes: { [field.key]: value } },
+              ctx(),
+            );
+          } catch (error) {
+            throw new Error(
+              `资源覆盖校验失败：${type}/${current.id}，字段 ${field.key}，测试值 ${JSON.stringify(value)}。 ${(error as Error).message}`,
+              { cause: error },
+            );
+          }
           let passed = false;
           const slug =
             type === "sections"

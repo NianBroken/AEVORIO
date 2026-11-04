@@ -3,8 +3,10 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
 import { ENTITIES, fieldsFor, sectionDefaults } from "./resource-definitions";
-import { SECTION_NAMES } from "../../../shared/content";
-import { REVISION_PAGE_SIZE } from "../../../shared/content";
+import {
+  PROTECTED_SECTION_TYPES,
+  REVISION_PAGE_SIZE,
+} from "../../../shared/content";
 import {
   getValue,
   setValue,
@@ -51,10 +53,16 @@ export class ResourceService {
     includeDeleted = false,
   ): Promise<ResourceRecord[]> {
     const entity = ENTITIES[type];
-    const [rows] = await this.database.query<RowDataPacket[]>(
-      "SELECT * FROM ?? ORDER BY ??",
-      [entity.table, entity.id],
-    );
+    const [rows] =
+      type === "sections"
+        ? await this.database.execute<RowDataPacket[]>(
+            "SELECT s.* FROM page_sections s WHERE (?=1 OR s.is_deleted=0) AND (s.section_type<>'product-matrix' OR EXISTS(SELECT 1 FROM product_categories c WHERE c.id=s.category_id AND c.is_deleted=0)) ORDER BY s.id",
+            [includeDeleted ? 1 : 0],
+          )
+        : await this.database.query<RowDataPacket[]>(
+            "SELECT * FROM ?? ORDER BY ??",
+            [entity.table, entity.id],
+          );
     const allowed = rows.filter(
       (r) =>
         (type !== "settings" ||
@@ -200,6 +208,20 @@ export class ResourceService {
           3004,
           "保存被拒绝：该对象已被其他操作修改，请重新读取最新版本后比较内容。",
         );
+      if (
+        type === "sections" &&
+        Object.hasOwn(request.changes, "section_type") &&
+        PROTECTED_SECTION_TYPES.has(
+          String(request.changes.section_type ?? ""),
+        )
+      )
+        throw new ManagementError(400, 1001, "系统模块类型不能用于自定义模块。");
+      if (
+        type === "sections" &&
+        deleted &&
+        PROTECTED_SECTION_TYPES.has(String(old.values.section_type))
+      )
+        throw new ManagementError(400, 1001, "系统模块不能单独删除。");
       const values = structuredClone(old.values);
       for (const key of Object.keys(request.changes))
         if (!old.fields.some((f) => f.key === key && !f.readonly))
@@ -259,6 +281,8 @@ export class ResourceService {
             "类别仍有关联产品，请先将产品移动到其他类别。",
           );
       }
+      if (type === "categories" && deleted !== undefined)
+        await this.setCategorySectionsDeleted(db, id, deleted, context);
       if (type === "media" && deleted) {
         if ((await this.references(id, db)).length)
           throw new ManagementError(
@@ -470,6 +494,27 @@ export class ResourceService {
         context.operationId,
       ],
     );
+  }
+  private async setCategorySectionsDeleted(
+    db: PoolConnection,
+    categoryId: string,
+    deleted: boolean,
+    context: EditContext,
+  ): Promise<void> {
+    const [rows] = await db.execute<RowDataPacket[]>(
+      "SELECT * FROM page_sections WHERE section_type='product-matrix' AND category_id=? AND is_deleted<>?",
+      [categoryId, deleted],
+    );
+    for (const row of rows) {
+      const id = String(row.id);
+      const current = this.map("sections", row);
+      await this.record(db, current, context);
+      await db.execute(
+        "UPDATE page_sections SET is_deleted=?,version=version+1 WHERE id=? AND version=?",
+        [deleted, id, current.version],
+      );
+      await this.record(db, await this.get("sections", id, db), context);
+    }
   }
   // 恢复对象时为已变化的共享图片建立独立引用，保留其他对象的当前图片。
   private async restoreReferences(
@@ -757,8 +802,14 @@ export class ResourceService {
           ...values,
         };
       if (type === "sections") {
-        if (!Object.hasOwn(SECTION_NAMES, String(values.section_type)))
-          throw new ManagementError(400, 1001, "板块类型不在允许范围内。");
+        if (
+          typeof values.section_type !== "string" ||
+          !values.section_type.trim() ||
+          values.section_type.length > 48
+        )
+          throw new ManagementError(400, 1001, "板块类型必须为 1 至 48 个字符。");
+        if (PROTECTED_SECTION_TYPES.has(values.section_type))
+          throw new ManagementError(400, 1001, "系统模块类型不能用于自定义模块。");
         const [page] = await db.execute<RowDataPacket[]>(
           "SELECT id FROM pages WHERE id=?",
           [values.page_id!],

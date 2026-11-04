@@ -31,6 +31,10 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
   page.setDefaultTimeout(12000);
   const failures: string[] = [];
   page.on("pageerror", (e) => failures.push(e.message));
+  page.on("response", (response) => {
+    if (response.status() >= 400)
+      failures.push(`${response.status()} ${response.url()}`);
+  });
   page.on("console", (m) => {
     if (["error", "warning"].includes(m.type())) failures.push(m.text());
   });
@@ -47,8 +51,15 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
     .fill(credential.password ?? credential.temporaryPassword);
   await page.getByRole("button", { name: "登录后台", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "工作概览", exact: true }),
+    page.getByRole("heading", { name: "概览", exact: true }),
   ).toBeVisible();
+  await expect(page.locator(".sidebar nav button")).toHaveCount(6);
+  await expect(
+    page.locator(".sidebar").getByRole("button", { name: "媒体资源" }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(".sidebar").getByRole("button", { name: "资源覆盖" }),
+  ).toHaveCount(0);
   const publicPage = await context.newPage();
   const measurements = [];
   for (const [width, height] of SIZES) {
@@ -112,7 +123,7 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
   const cases = [
     {
       type: "products",
-      menu: "产品管理",
+      menu: "产品介绍设置",
       field: "详细说明",
       key: "description",
       value: "浏览器界面发布验证，原产品资料在验证后恢复。",
@@ -121,7 +132,7 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
     },
     {
       type: "sections",
-      menu: "页面内容",
+      menu: "公司首页设置",
       field: "标题",
       key: "title",
       value: "工程由板开始，界面发布验证",
@@ -130,7 +141,7 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
     },
     {
       type: "categories",
-      menu: "产品类别",
+      menu: "产品介绍设置",
       field: "名称",
       key: "name",
       value: "计算类别界面验证",
@@ -139,7 +150,7 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
     },
     {
       type: "settings",
-      menu: "公共内容",
+      menu: "全局内容设置",
       field: "公司名称",
       key: "setting_value",
       value: "企业名称示例界面验证",
@@ -148,7 +159,7 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
     },
     {
       type: "pages",
-      menu: "页面与分享",
+      menu: "公司首页设置",
       field: "页面描述",
       key: "meta_description",
       value: "页面搜索说明界面验证",
@@ -170,6 +181,12 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
           : list.items[0]
     ) as ResourceRecord;
     await navigate(page, item.menu);
+    if (item.type === "products")
+      await page.getByRole("button", { name: "产品资料", exact: true }).click();
+    if (item.type === "categories")
+      await page.getByRole("button", { name: "产品类别", exact: true }).click();
+    if (item.type === "pages")
+      await page.getByRole("button", { name: "页面信息", exact: true }).click();
     await page.getByLabel("搜索资源").fill(baseline.id);
     await page
       .getByRole("button", { name: "编辑", exact: true })
@@ -274,69 +291,66 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
     });
     await page.getByRole("button", { name: "返回列表", exact: true }).click();
   }
-  await navigate(page, "媒体资源");
-  const mediaBefore = await api("/resources/media?limit=500");
-  await page
-    .locator("input[type=file]")
-    .setInputFiles(path.join(ROOT, "storage/media/home-engineering.png"));
-  await expect(
-    page.getByText("图片已保存到媒体库。", { exact: true }),
-  ).toBeVisible();
-  const mediaAfter = await api("/resources/media?limit=500");
-  const uploaded = mediaAfter.items.find(
-    (r: ResourceRecord) =>
-      !mediaBefore.items.some((b: ResourceRecord) => b.id === r.id),
+  await navigate(page, "公司首页设置");
+  const hero = (await api("/resources/sections?limit=500")).items.find(
+    (record: ResourceRecord) =>
+      record.values.page_id === 1 && record.values.section_type === "hero",
   ) as ResourceRecord;
-  expect(uploaded).toBeTruthy();
-  await page.getByLabel("搜索资源").fill(uploaded.id);
+  const previousHero = await api(`/resources/sections/${hero.id}`);
+  await page.getByLabel("搜索资源").fill(hero.id);
   await page.getByRole("button", { name: "编辑", exact: true }).click();
-  await page.getByRole("tab", { name: "文字与内容" }).click();
-  await page
-    .getByLabel("图片替代文字", { exact: true })
-    .fill("浏览器上传图片说明");
-  await page.getByRole("button", { name: "保存并发布", exact: true }).click();
-  await expect
-    .poll(
-      async () =>
-        (await api("/resources/media/" + uploaded.id)).values.alt_text,
-    )
-    .toBe("浏览器上传图片说明");
-  const beforeReplacement = await api("/resources/media/" + uploaded.id);
-  const replacementResponse = page.waitForResponse(
+  await page.getByRole("tab", { name: "图片与图标", exact: true }).click();
+  const uploadResponse = page.waitForResponse(
     (response) =>
       response.url().endsWith("/media/uploads") &&
       response.request().method() === "POST",
   );
   await page
-    .locator(".editor input[type=file]")
-    .setInputFiles(path.join(ROOT, "storage/media/about-assembly.png"));
-  expect((await replacementResponse).ok()).toBe(true);
+    .locator(".editor-form .ant-form-item")
+    .filter({ has: page.getByLabel("图片", { exact: true }) })
+    .locator("input[type=file]")
+    .setInputFiles(path.join(ROOT, "storage/media/home-engineering.png"));
+  const uploadedResponse = await uploadResponse;
+  expect(uploadedResponse.ok()).toBe(true);
+  const selectedMedia = String((await uploadedResponse.json()).Data.id);
+  const uploadedMedia = await api(`/resources/media/${selectedMedia}`);
+  await page.getByRole("button", { name: "保存并发布", exact: true }).click();
   await expect
-    .poll(
-      async () => (await api("/resources/media/" + uploaded.id)).values.sha256,
-    )
-    .not.toBe(beforeReplacement.values.sha256);
+    .poll(async () => (await api(`/resources/sections/${hero.id}`)).values.media_id)
+    .toBe(selectedMedia);
+  await publicPage.goto("/");
+  await expect(
+    publicPage.locator(
+      `[data-section-id="${hero.values.section_key}"] img[src*="${uploadedMedia.values.file_name}"]`,
+    ),
+  ).toBeVisible();
   await page.getByRole("tab", { name: "历史与恢复" }).click();
-  const mediaRevision = page
+  await page
     .locator(".revision-row")
     .filter({
-      has: page.getByText(`版本 ${beforeReplacement.version}`, { exact: true }),
-    });
-  await mediaRevision.getByRole("button", { name: "比较并恢复" }).click();
+      has: page.getByText(`版本 ${previousHero.version}`, { exact: true }),
+    })
+    .getByRole("button", { name: "比较并恢复" })
+    .click();
   await page.getByRole("button", { name: "恢复并发布", exact: true }).click();
   await expect
-    .poll(
-      async () => (await api("/resources/media/" + uploaded.id)).values.sha256,
-    )
-    .toBe(beforeReplacement.values.sha256);
-  await expect(page.locator(".ant-modal-wrap")).toHaveCount(0);
+    .poll(async () => (await api(`/resources/sections/${hero.id}`)).values.media_id)
+    .toBe(previousHero.values.media_id);
   await page.getByRole("button", { name: "返回列表", exact: true }).click();
-  await page.getByRole("button", { name: "删除", exact: true }).click();
-  await page.getByRole("button", { name: "删除并发布", exact: true }).click();
-  await expect
-    .poll(async () => (await api("/resources/media/" + uploaded.id)).deleted)
-    .toBe(true);
-  await navigate(page, "产品类别");
+  const uploadedId = String(selectedMedia);
+  const uploadedRecord = await api(`/resources/media/${uploadedId}`);
+  await page.request.delete(
+    adminOrigin + `/api/v1/admin/resources/media/${uploadedId}`,
+    {
+      headers: { Origin: adminOrigin, "X-CSRF-Token": session.csrfToken },
+      data: {
+        version: uploadedRecord.version,
+        operationId: crypto.randomUUID(),
+      },
+    },
+  );
+  await navigate(page, "产品介绍设置");
+  await page.getByRole("button", { name: "产品类别", exact: true }).click();
   await page.getByRole("button", { name: "创建产品类别", exact: true }).click();
   await page.getByLabel("名称或标题", { exact: true }).fill("界面创建验证类别");
   await page
@@ -354,14 +368,21 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
     (r: ResourceRecord) => r.values.name === "界面创建验证类别",
   ) as ResourceRecord;
   await page.getByRole("button", { name: "返回列表", exact: true }).click();
-  await navigate(page, "产品管理");
+  await navigate(page, "产品介绍设置");
+  await page.getByRole("button", { name: "产品资料", exact: true }).click();
   await page.getByRole("button", { name: "创建产品", exact: true }).click();
   await page.getByLabel("名称或标题", { exact: true }).fill("界面创建验证产品");
   await page
     .getByLabel("内容说明", { exact: true })
     .fill("验证真实表单创建产品，结束后可恢复删除。");
-  await page.getByLabel("产品类别", { exact: true }).click();
-  await page.getByTitle("界面创建验证类别", { exact: true }).click();
+  await page
+    .getByLabel("产品类别", { exact: true })
+    .fill("界面创建验证类别");
+  await page
+    .locator(".ant-select-dropdown:visible .ant-select-item-option")
+    .filter({ hasText: "界面创建验证类别" })
+    .last()
+    .click();
   await page.getByLabel("图片", { exact: true }).focus();
   await page.getByLabel("图片", { exact: true }).press("ArrowDown");
   await page.getByLabel("图片", { exact: true }).press("Enter");
@@ -378,31 +399,26 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
     publicPage.getByText("界面创建验证产品", { exact: true }),
   ).toBeVisible();
   await deleteFromEditor();
-  await navigate(page, "产品类别");
+  await navigate(page, "产品介绍设置");
+  await page.getByRole("button", { name: "产品类别", exact: true }).click();
   await page.getByLabel("搜索资源").fill(category.id);
   await page.getByRole("button", { name: "编辑", exact: true }).click();
   await deleteFromEditor();
-  const automatic = (await api("/resources/sections?limit=500")).items.find(
-    (r: ResourceRecord) => r.values.category_id === category.id,
-  ) as ResourceRecord;
-  await navigate(page, "页面内容");
-  await page.getByLabel("搜索资源").fill(automatic.id);
-  await page
-    .locator(`tr[data-row-key="${automatic.id}"]`)
-    .getByRole("button", { name: "编辑", exact: true })
-    .click();
-  await deleteFromEditor();
+  await navigate(page, "产品介绍设置");
+  await page.getByRole("button", { name: "页面模块", exact: true }).click();
   await page.getByLabel("搜索资源").clear();
-  await page.getByRole("button", { name: "创建页面板块", exact: true }).click();
+  await page.getByRole("button", { name: "创建页面模块", exact: true }).click();
   await page.getByLabel("名称或标题", { exact: true }).fill("界面创建验证板块");
   await page
     .getByLabel("内容说明", { exact: true })
     .fill("验证页面板块的创建、隐藏、排序和删除。");
-  await page.getByLabel("所属页面", { exact: true }).click();
+  await page.getByLabel("模块类型", { exact: true }).click();
+  await page.keyboard.insertText("自定义类型");
   await page
     .locator(".ant-select-dropdown:visible .ant-select-item-option")
-    .first()
+    .filter({ hasText: "自定义类型" })
     .click();
+  await page.getByLabel("自定义类型名称", { exact: true }).fill("browser-custom-module");
   await page.getByRole("button", { name: "创建并发布", exact: true }).click();
   await expect(
     page.getByRole("heading", {
@@ -414,6 +430,7 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
   const section = (await api("/resources/sections?limit=500")).items.find(
     (r: ResourceRecord) => r.values.title === "界面创建验证板块",
   ) as ResourceRecord;
+  expect(section.values.section_type).toBe("browser-custom-module");
   await page.getByLabel("显示顺序", { exact: true }).fill("2");
   await page.getByRole("switch", { name: "公开显示", exact: true }).click();
   await page.getByRole("button", { name: "保存并发布", exact: true }).click();
@@ -423,7 +440,7 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
         (await api("/resources/sections/" + section.id)).values.is_visible,
     )
     .toBe(false);
-  await publicPage.goto("/");
+  await publicPage.goto("/products");
   await expect(
     publicPage.getByText("界面创建验证板块", { exact: true }),
   ).toHaveCount(0);
@@ -444,12 +461,8 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
   await linked.goto(adminOrigin + "/admin/#/settings/company_name");
   await expect(linked.locator(".editor-toolbar h2")).toHaveText("公司名称");
   await linked.close();
-  await navigate(page, "资源覆盖");
-  await expect(page.getByText("编辑映射已建立", { exact: true })).toBeVisible();
-  await page.screenshot({
-    path: "screenshots/admin-coverage.png",
-    fullPage: true,
-  });
+  await navigate(page, "个人设置");
+  await expect(page.getByRole("heading", { name: "管理员账号", exact: true })).toBeVisible();
   expect(failures).toEqual([]);
   await mkdir("reports", { recursive: true });
   await writeFile(
@@ -460,7 +473,7 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
         results,
         measurements,
         upload: true,
-        mediaReplacementAndHistory: true,
+        inlineImageUploadAndHistory: true,
         recoverableDelete: true,
         createCategory: true,
         createProduct: true,

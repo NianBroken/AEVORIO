@@ -346,6 +346,46 @@ p {
   margin-bottom: 24px;
   gap: 15px;
 }
+.resource-tabs {
+  display: flex;
+  gap: 8px;
+  margin: -4px 0 24px;
+  border-bottom: 1px solid #dfe5da;
+}
+.resource-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #718073;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.resource-tabs button.active {
+  border-bottom-color: #376d58;
+  color: #2e5943;
+  font-weight: 600;
+}
+.personal-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+.personal-settings .panel-heading h2 {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
+}
+.inline-media-field {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.inline-media-field .ant-select {
+  flex: 1;
+  min-width: 240px;
+}
 .list-toolbar .ant-input-affix-wrapper {
   width: 300px;
 }
@@ -486,10 +526,12 @@ code {
 .icon-field {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 15px;
 }
 .icon-field .ant-select {
   flex: 1;
+  min-width: 240px;
 }
 .list-editor {
   display: grid;
@@ -501,6 +543,10 @@ code {
 }
 .list-item .ant-input,
 .list-item .ant-select {
+  flex: 1;
+  min-width: 0;
+}
+.list-item .ant-space {
   flex: 1;
   min-width: 0;
 }

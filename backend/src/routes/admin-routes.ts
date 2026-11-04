@@ -154,6 +154,61 @@ export function createAdminRouter(database: Pool, mediaRoot: string): Router {
       { user: req.session.admin },
     );
   });
+  router.patch("/auth/account", async (req, res) => {
+    const user = req.session.admin;
+    if (!user) throw new ManagementError(401, 3001, "请先登录后修改账号。");
+    const body = z
+      .object({
+        username: z.string().trim().min(1).max(80),
+        currentPassword: z.string().min(1).max(128),
+      })
+      .strict()
+      .parse(req.body);
+    const [rows] = await database.execute<RowDataPacket[]>(
+      "SELECT password_hash,session_version FROM admin_users WHERE id=?",
+      [user.id],
+    );
+    if (
+      !rows[0] ||
+      Number(rows[0].session_version) !== user.version ||
+      !(await verify(String(rows[0].password_hash), body.currentPassword))
+    )
+      throw new ManagementError(401, 3001, "当前密码验证失败，账号未修改。");
+    const [duplicate] = await database.execute<RowDataPacket[]>(
+      "SELECT id FROM admin_users WHERE username=? AND id<>? LIMIT 1",
+      [body.username, user.id],
+    );
+    if (duplicate.length)
+      throw new ManagementError(409, 3005, "用户名已被其他管理员使用。");
+    try {
+      const [updated] = await database.execute<import("mysql2/promise").ResultSetHeader>(
+        "UPDATE admin_users SET username=?,session_version=session_version+1 WHERE id=? AND session_version=?",
+        [body.username, user.id, user.version],
+      );
+      if (updated.affectedRows !== 1)
+        throw new ManagementError(401, 3001, "登录状态已失效，请重新登录。");
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "ER_DUP_ENTRY"
+      )
+        throw new ManagementError(409, 3005, "用户名已被其他管理员使用。");
+      throw error;
+    }
+    req.session.admin = {
+      ...user,
+      username: body.username,
+      version: user.version + 1,
+    };
+    sendSuccess(
+      res,
+      res.locals.requestId,
+      "管理员账号已更新，其他旧会话已失效。",
+      { user: req.session.admin },
+    );
+  });
   router.use(authorize(database));
   const resourceType = (value: unknown): ResourceType => {
     if (typeof value !== "string" || !Object.hasOwn(ENTITIES, value))

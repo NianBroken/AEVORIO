@@ -27,6 +27,7 @@ export function createApp(options: AppOptions = {}): Express {
     options.mediaDirectory ?? path.join(process.cwd(), "storage/media"),
   );
 
+  app.set("trust proxy", "loopback");
   app.disable("x-powered-by");
   app.use(
     helmet({
