@@ -1,3 +1,4 @@
+import ports from "../../shared/ports.json";
 import type { Metadata } from 'next';
 import type { PageSlug, SitePayload } from './site-types';
 import { rememberSettings } from './site-fallback';
@@ -9,7 +10,7 @@ export type SiteResult =
 
 // 所有页面只从独立 Express 接口读取真实数据，不在前端维护重复内容副本。
 export async function fetchSitePage(slug: PageSlug): Promise<SiteResult> {
-  const backendOrigin = process.env.BACKEND_ORIGIN ?? 'http://127.0.0.1:3101';
+  const backendOrigin = process.env.BACKEND_ORIGIN ?? `http://127.0.0.1:${ports.backend}`;
   const url = new URL('/api/v1/site', backendOrigin);
   url.searchParams.set('page', slug);
 

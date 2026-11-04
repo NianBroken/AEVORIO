@@ -1,3 +1,4 @@
+import { readEnvironment } from "../config/env";
 import session from "express-session";
 import mysqlSession from "express-mysql-session";
 import { randomBytes, timingSafeEqual } from "node:crypto";
@@ -20,10 +21,7 @@ declare module "express-session" {
 }
 const SESSION_AGE = 8 * 60 * 60 * 1000;
 export function adminOrigin(): string {
-  return (
-    process.env.ADMIN_ORIGIN ??
-    `http://${process.env.BACKEND_HOST ?? "127.0.0.1"}:${process.env.BACKEND_PORT ?? "3101"}`
-  );
+  return readEnvironment().FRONTEND_ORIGIN;
 }
 // 密钥仅存于后端私有目录，服务重启后继续验证原有会话。
 export function sessionMiddleware(database: Pool): RequestHandler {

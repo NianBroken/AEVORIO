@@ -1,14 +1,9 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import mysql from "mysql2/promise";
-import sharp from "sharp";
 import { readEnvironment } from "../src/config/env";
-import { migrateAdmin } from "./migrate-admin";
-import { finalizeAdminData } from "./finalize-admin-data";
-import { backupSite, verifyRestore } from "./backup-site";
 
-// 空库才导入示例。已有项目库只执行兼容迁移，不重置任何内容和稳定标识。
+// 空库导入唯一默认文件，已有项目库仅检查，不覆盖账号和业务内容。
 void (async () => {
   const env = readEnvironment();
   const db = await mysql.createConnection({
@@ -36,49 +31,22 @@ void (async () => {
         JSON.parse(String(marker[0]?.setting_value)) !== "AEVORIO_SAMPLE_SITE"
       )
         throw new Error("数据库项目标识不匹配，初始化未执行。");
-      const backup = await backupSite();
-      await verifyRestore(backup);
       await db.query("USE ??", [env.DB_NAME]);
     } else {
       const schema = await readFile(
-        path.resolve(__dirname, "../database/schema.sql"),
+        path.resolve(__dirname, "../database/default.sql"),
         "utf8",
       );
       await db.query(
         schema.replaceAll("`aevorio`", mysql.escapeId(env.DB_NAME)),
       );
-      const [media] = await db.query<mysql.RowDataPacket[]>(
-        "SELECT id,file_name FROM media_assets",
-      );
-      for (const item of media) {
-        const bytes = await readFile(
-          path.resolve(
-            __dirname,
-            "../storage/media",
-            path.basename(String(item.file_name)),
-          ),
-        );
-        const metadata = await sharp(bytes).metadata();
-        await db.execute(
-          "UPDATE media_assets SET file_size=?,width=?,height=?,sha256=? WHERE id=?",
-          [
-            bytes.length,
-            metadata.width!,
-            metadata.height!,
-            createHash("sha256").update(bytes).digest("hex"),
-            item.id,
-          ],
-        );
-      }
     }
-    await migrateAdmin(db);
-    await finalizeAdminData(db);
     const [pages] = await db.query<mysql.RowDataPacket[]>(
       "SELECT p.slug,COUNT(s.id) AS count FROM pages p JOIN page_sections s ON s.page_id=p.id AND s.is_visible=1 AND s.is_deleted=0 GROUP BY p.id",
     );
     if (pages.length !== 3 || pages.some((p) => Number(p.count) < 10))
       throw new Error("页面有效板块数量不满足发布要求。");
-    console.log("数据库结构、兼容迁移与页面约束核验通过，现有内容未被重置。");
+    console.log("MySQL 默认结构与页面约束核验通过，已有账号和内容未被重置。");
   } finally {
     await db.end();
   }

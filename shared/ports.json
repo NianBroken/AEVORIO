@@ -1,0 +1,8 @@
+{
+  "frontend": 24681,
+  "backend": 24682,
+  "testServer": 24683,
+  "testFrontend": 24684,
+  "failureServer": 24685,
+  "failureFrontend": 24686
+}

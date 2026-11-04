@@ -71,11 +71,10 @@ export async function auditDelivery(): Promise<void> {
       });
     }
     const backendOrigin =
-      process.env.ADMIN_ORIGIN ??
-      `http://${env.BACKEND_HOST}:${env.BACKEND_PORT}`;
+      env.FRONTEND_ORIGIN;
     const admin = await fetch(new URL("/admin/", backendOrigin));
     assert(
-      admin.ok && (await admin.text()).includes("/admin/assets/"),
+      admin.ok && (await admin.text()).includes("AEVORIO 后台管理"),
       "后台正式构建未正常提供。",
     );
     let mediaVerified = 0;

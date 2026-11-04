@@ -1,0 +1,42 @@
+import { chromium, expect } from '@playwright/test';
+import { createRequire } from 'node:module';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import process from 'node:process';
+import { URL } from 'node:url';
+import console from 'node:console';
+import ports from '../../shared/ports.json' with {type:'json'};
+const backend=path.resolve('../backend');
+const requireBackend=createRequire(path.join(backend,'package.json'));
+const mysql=requireBackend('mysql2/promise');
+const env=requireBackend('dotenv').parse(await fs.readFile(path.join(backend,'.env'),'utf8'));
+const name='aevorio_test_migration';
+const front=`http://127.0.0.1:${ports.frontend}`;
+const api=`http://127.0.0.1:${ports.backend}`;
+const isolated=`http://127.0.0.1:${ports.testServer}`;
+const owner=await mysql.createConnection({host:env.DB_HOST,port:Number(env.DB_PORT),user:env.DB_USER,password:env.DB_PASSWORD,multipleStatements:true});
+const browser=await chromium.launch();
+let child;
+try {
+  const [before]=await owner.query('SELECT username,password_hash,must_change_password,session_version FROM aevorio.admin_users');
+  const context=await browser.newContext();const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  for(const route of ['/','/products','/about']){expect((await page.goto(front+route)).status()).toBe(200);await expect(page.locator('h1').first()).toBeVisible();}
+  await page.goto(front+'/admin/');expect(new URL(page.url()).pathname).toMatch(/^\/admin\/?$/);await expect(page.getByRole('heading',{name:'登录内容管理'})).toBeVisible();
+  expect((await context.request.get(api+'/admin/')).status()).toBe(404);expect((await context.request.get(api+'/admin/assets/legacy.js')).status()).toBe(404);
+  expect((await context.request.get(front+'/api/v1/site?page=home')).status()).toBe(200);
+  await owner.query('DROP DATABASE IF EXISTS ??',[name]);
+  await owner.query((await fs.readFile(path.join(backend,'database/default.sql'),'utf8')).replaceAll('`aevorio`',mysql.escapeId(name)));
+  child=spawn(process.execPath,[path.join(backend,'node_modules/tsx/dist/cli.mjs'),'scripts/test-site-server.ts'],{cwd:backend,windowsHide:true,env:{...process.env,...env,DB_NAME:name,TEST_MEDIA_ROOT:path.join(backend,'storage/media')},stdio:['ignore','pipe','pipe','ipc']});
+  let childErrors='';child.stderr.on('data',d=>childErrors+=d.toString());await once(child,'message');
+  const isolatedContext=await browser.newContext();const p=await isolatedContext.newPage();p.on('pageerror',e=>errors.push(e.message));
+  await p.route('**/api/**',async route=>{const url=new URL(route.request().url());const response=await route.fetch({url:isolated+url.pathname+url.search});await route.fulfill({response});});
+  await p.goto(front+'/admin/');await p.getByLabel('用户名',{exact:true}).fill('Nian');await p.getByLabel('密码',{exact:true}).fill('Nian123456');await p.getByRole('button',{name:'登录后台',exact:true}).click();await expect(p.getByRole('heading',{name:'设置管理密码',exact:true})).toBeVisible();await p.reload();await expect(p.getByRole('heading',{name:'设置管理密码',exact:true})).toBeVisible();
+  const blocked=await p.evaluate(async()=> (await globalThis.fetch('/api/v1/admin/overview')).status);expect(blocked).toBe(403);
+  await p.getByLabel('当前临时密码',{exact:true}).fill('Nian123456');await p.getByLabel('新密码',{exact:true}).fill('Migration123!');await p.getByRole('button',{name:'设置密码并进入后台',exact:true}).click();await expect(p.getByRole('heading',{name:'工作概览',exact:true})).toBeVisible();
+  const result=await p.evaluate(async()=>{const session=(await(await globalThis.fetch('/api/v1/admin/auth/session')).json()).Data;const headers={'Content-Type':'application/json','X-CSRF-Token':session.csrfToken};const record=(await(await globalThis.fetch('/api/v1/admin/resources/settings/company_name')).json()).Data;const saved=await globalThis.fetch('/api/v1/admin/resources/settings/company_name',{method:'PATCH',headers,body:JSON.stringify({version:record.version,operationId:globalThis.crypto.randomUUID(),changes:{setting_value:'隔离迁移验收'}})});const publicData=await(await globalThis.fetch('/api/v1/site?page=home')).json();const logout=await globalThis.fetch('/api/v1/admin/auth/logout',{method:'POST',headers});return {saved:saved.status,published:JSON.stringify(publicData).includes('隔离迁移验收'),logout:logout.status};});
+  expect(result.saved).toBe(200);expect(result.published).toBe(true);expect(result.logout).toBe(200);await p.reload();await expect(p.getByRole('heading',{name:'登录内容管理'})).toBeVisible();expect(errors).toEqual([]);expect(childErrors).toBe('');
+  const [after]=await owner.query('SELECT username,password_hash,must_change_password,session_version FROM aevorio.admin_users');expect(after).toEqual(before);
+  const report={passed:true,verifiedAt:new Date().toISOString(),frontend:front+'/',admin:page.url(),backendPages404:true,realProxy:true,isolatedLogin:true,forcedPassword:true,blockedBeforeChange:true,editAndPublish:true,logout:true,productionAdministratorsUnchanged:true,browserErrors:errors};await fs.writeFile('reports/migration-verification.json',JSON.stringify(report,null,2),'utf8');console.log(JSON.stringify(report));
+} finally {if(child){const exited=once(child,'exit');child.kill();await exited;}await browser.close();await owner.query('DROP DATABASE IF EXISTS ??',[name]);await owner.end();}

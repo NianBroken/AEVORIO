@@ -54,7 +54,7 @@ const services: ManagedService[] = [
   {
     key: "backend",
     cwd: backendRoot,
-    args: [path.join(backendRoot, "dist/src/server.js")],
+    args: [path.join(backendRoot, "dist/backend/src/server.js")],
     url: backendUrl,
     health: backendUrl + "/api/v1/site?page=home",
     restarts: 0,
@@ -70,7 +70,7 @@ const services: ManagedService[] = [
       "--hostname",
       frontendUrl.hostname,
       "--port",
-      frontendUrl.port || "3000",
+      frontendUrl.port || "24681",
     ],
     url: frontendUrl.origin,
     health: frontendUrl.origin,
@@ -97,7 +97,8 @@ async function healthy(service: ManagedService): Promise<boolean> {
       const body = (await response.json()) as { Code: number };
       return body.Code === 0;
     }
-    return true;
+    const admin = await fetch(service.url + "/admin/", { signal: AbortSignal.timeout(4000) });
+    return admin.ok && new URL(admin.url).pathname.replace(/\/$/u, "") === "/admin" && (await admin.text()).includes("AEVORIO 后台管理");
   } catch {
     return false;
   }

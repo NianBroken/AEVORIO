@@ -1,3 +1,4 @@
+import NextImage from "next/image";
 import { lazy, useEffect, useState } from "react";
 import {
   Button,
@@ -21,7 +22,7 @@ import {
   type JsonValue,
   type ResourceRecord,
   type Values,
-} from "../../contracts/content";
+} from "../../../shared/content";
 const Alert = lazy(
   () => import("antd/es/alert"),
 ) as unknown as (typeof import("antd"))["Alert"];
@@ -275,7 +276,7 @@ export function Editor({
             onChange={(v) => change(field.key, v ?? "")}
           />
           {value && (
-            <img
+            <NextImage unoptimized width={160} height={100}
               className="field-image"
               src={`/media/${media.find((m) => m.id === value)?.values.file_name ?? ""}`}
               alt={field.label}
@@ -498,7 +499,7 @@ export function Editor({
           <h3>{record.title}</h3>
           {record.type === "media" && (
             <>
-              <img
+              <NextImage unoptimized width={160} height={100}
                 className="large-preview"
                 src={`/media/${record.values.file_name}?v=${record.version}`}
                 alt={String(values.alt_text ?? "")}
@@ -620,7 +621,7 @@ function ListField({
             disabled={!index}
             onClick={() => {
               const next = [...value];
-              [next[index - 1], next[index]] = [next[index], next[index - 1]];
+              [next[index - 1], next[index]] = [next[index]!, next[index - 1]!];
               onChange(next);
             }}
           >

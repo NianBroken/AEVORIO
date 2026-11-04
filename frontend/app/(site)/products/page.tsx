@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
-import { PageLayout } from '../../components/PageLayout';
-import { PageUnavailable } from '../../components/PageUnavailable';
-import { ScaledPage } from '../../components/ScaledPage';
-import { SectionBlocks } from '../../components/SectionBlocks';
-import { fetchSitePage, makePageMetadata } from '../../lib/site-data';
-import { fallbackSettings } from '../../lib/site-fallback';
+import { PageLayout } from '../../../components/PageLayout';
+import { PageUnavailable } from '../../../components/PageUnavailable';
+import { ScaledPage } from '../../../components/ScaledPage';
+import { SectionBlocks } from '../../../components/SectionBlocks';
+import { fetchSitePage, makePageMetadata } from '../../../lib/site-data';
+import { fallbackSettings } from '../../../lib/site-fallback';
 
 // 产品分类、四十五张主图与详情按钮共用同一个独立数据库响应。
 export async function generateMetadata(): Promise<Metadata> {

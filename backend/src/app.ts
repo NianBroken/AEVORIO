@@ -48,13 +48,7 @@ export function createApp(options: AppOptions = {}): Express {
   app.use(express.json({ limit: "512kb" }));
   if (options.database) {
     app.use("/api/v1/admin", createAdminRouter(options.database, mediaRoot));
-    const adminRoot = path.resolve(process.cwd(), "admin-ui/dist");
-    app.use("/admin", express.static(adminRoot, { index: false }));
-    app.get(["/admin", "/admin/", "/admin/{*path}"], (_request, response) => {
-      response.setHeader("Cache-Control", "no-store");
-      response.setHeader("X-Robots-Tag", "noindex, nofollow");
-      response.sendFile(path.join(adminRoot, "index.html"));
-    });
+
   }
   app.use(
     "/media",

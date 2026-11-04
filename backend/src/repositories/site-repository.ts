@@ -5,7 +5,7 @@ import type {
   SitePayload,
   SiteRepository,
 } from "../types/site";
-import { textList, type Values } from "../../contracts/content";
+import { textList, type Values } from "../../../shared/content";
 const decode = (value: unknown): unknown =>
   typeof value === "string" ? JSON.parse(value) : value;
 // 单次读取使用一致性事务，防止发布过程中拼出不同版本的页面内容。

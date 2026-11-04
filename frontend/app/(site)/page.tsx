@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
-import { ScaledPage } from '../components/ScaledPage';
-import { fetchSitePage, makePageMetadata } from '../lib/site-data';
-import { PageLayout } from '../components/PageLayout';
-import { PageUnavailable } from '../components/PageUnavailable';
-import { SectionBlocks } from '../components/SectionBlocks';
-import { fallbackSettings } from '../lib/site-fallback';
+import { ScaledPage } from '../../components/ScaledPage';
+import { fetchSitePage, makePageMetadata } from '../../lib/site-data';
+import { PageLayout } from '../../components/PageLayout';
+import { PageUnavailable } from '../../components/PageUnavailable';
+import { SectionBlocks } from '../../components/SectionBlocks';
+import { fallbackSettings } from '../../lib/site-fallback';
 
 // 首页分别从数据库读取自己的 SEO 内容和十二个独立展示板块。
 export async function generateMetadata(): Promise<Metadata> {

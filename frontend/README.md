@@ -21,7 +21,7 @@ npm --prefix frontend run lint
 npm --prefix frontend run build
 ```
 
-全部应用正式构建完成后，使用启停脚本运行。后台正式产物由 Express 提供，不需要第三个长期运行的开发服务。
+全部应用正式构建完成后，使用启停脚本运行。前台及后台均由 Next.js 在 24681 提供，Express 在 24682 仅提供业务接口与媒体文件服务。
 
 ```powershell
 & ./frontend/scripts/start-site.ps1

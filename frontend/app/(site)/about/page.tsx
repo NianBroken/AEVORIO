@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
-import { PageLayout } from '../../components/PageLayout';
-import { PageUnavailable } from '../../components/PageUnavailable';
-import { ScaledPage } from '../../components/ScaledPage';
-import { SectionBlocks } from '../../components/SectionBlocks';
-import { fetchSitePage, makePageMetadata } from '../../lib/site-data';
-import { fallbackSettings } from '../../lib/site-fallback';
+import { PageLayout } from '../../../components/PageLayout';
+import { PageUnavailable } from '../../../components/PageUnavailable';
+import { ScaledPage } from '../../../components/ScaledPage';
+import { SectionBlocks } from '../../../components/SectionBlocks';
+import { fetchSitePage, makePageMetadata } from '../../../lib/site-data';
+import { fallbackSettings } from '../../../lib/site-fallback';
 
 // 企业介绍版块以数据库中已确认边界的示例内容独立整理。
 export async function generateMetadata(): Promise<Metadata> {

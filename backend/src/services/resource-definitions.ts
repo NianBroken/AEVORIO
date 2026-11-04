@@ -5,7 +5,7 @@ import {
   type FieldDefinition,
   type ResourceType,
   type Values,
-} from "../../contracts/content";
+} from "../../../shared/content";
 
 // 实体和数据库列的允许名单是唯一的数据访问定义，展示 JSON 使用可解释的字段规则。
 export const ENTITIES = {

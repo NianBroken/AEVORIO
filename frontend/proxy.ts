@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 const CONTENT_PATHS = new Set(['/', '/products', '/about']);
-const RESOURCE_PREFIXES = ['/api', '/media', '/_next'];
+const RESOURCE_PREFIXES = ['/api', '/media', '/_next', '/admin'];
 
 // 未知内容路径在页面渲染之前直接重定向，保持三个正式页面及正常资源请求。
 export function proxy(request: NextRequest) {

@@ -4,7 +4,7 @@ import path from "node:path";
 import type { RowDataPacket } from "mysql2/promise";
 import { readEnvironment } from "../src/config/env";
 import { createDatabasePool, closeDatabasePool } from "../src/database/pool";
-import { hashPassword } from "../src/routes/admin-routes";
+import { hashPassword } from "../src/services/password-service";
 import { ResourceService } from "../src/services/resource-service";
 import { secureDirectory } from "../src/utils/private-storage";
 

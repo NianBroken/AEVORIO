@@ -1,7 +1,10 @@
+import { hashPassword } from "../services/password-service";
+export { hashPassword } from "../services/password-service";
+import { PASSWORD_PATTERN, PASSWORD_MESSAGE } from "../../../shared/password";
 import { Router, type ErrorRequestHandler } from "express";
 import { rateLimit } from "express-rate-limit";
 import multer from "multer";
-import { hash, verify, Algorithm } from "@node-rs/argon2";
+import { verify } from "@node-rs/argon2";
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import { z } from "zod";
 import { ENTITIES } from "../services/resource-definitions";
@@ -18,17 +21,9 @@ import {
   verifyCsrf,
 } from "../middleware/admin-auth";
 import { sendFailure, sendSuccess } from "../utils/response";
-import type { ResourceType, Values } from "../../contracts/content";
+import type { ResourceType, Values } from "../../../shared/content";
 import { readEnvironment } from "../config/env";
 
-const passwordOptions = {
-  algorithm: Algorithm.Argon2id,
-  memoryCost: 19456,
-  timeCost: 2,
-  parallelism: 1,
-};
-export const hashPassword = (password: string) =>
-  hash(password, passwordOptions);
 const editSchema = z
   .object({
     version: z.number().int().positive(),
@@ -125,7 +120,7 @@ export function createAdminRouter(database: Pool, mediaRoot: string): Router {
     const body = z
       .object({
         currentPassword: z.string().min(1).max(128),
-        newPassword: z.string().min(12).max(128),
+        newPassword: z.string().regex(PASSWORD_PATTERN, PASSWORD_MESSAGE),
       })
       .strict()
       .parse(req.body);
@@ -141,10 +136,12 @@ export function createAdminRouter(database: Pool, mediaRoot: string): Router {
       throw new ManagementError(401, 3001, "当前密码验证失败，密码未修改。");
     if (body.newPassword === body.currentPassword)
       throw new ManagementError(400, 1001, "新密码不能与当前临时密码相同。");
-    await database.execute(
-      "UPDATE admin_users SET password_hash=?,must_change_password=0,session_version=session_version+1 WHERE id=?",
-      [await hashPassword(body.newPassword), user.id],
+    const [updated] = await database.execute<import("mysql2/promise").ResultSetHeader>(
+      "UPDATE admin_users SET password_hash=?,must_change_password=0,session_version=session_version+1 WHERE id=? AND session_version=?",
+      [await hashPassword(body.newPassword), user.id, user.version],
     );
+    if (updated.affectedRows !== 1)
+      throw new ManagementError(401, 3001, "登录状态已失效，请重新登录。");
     req.session.admin = {
       ...user,
       mustChange: false,

@@ -2,7 +2,7 @@
 import { ManagedIcon } from "./ManagedIcon";
 import { useSiteContent } from "./ContentProvider";
 import type { CSSProperties } from "react";
-import { textList } from "../../backend/contracts/content";
+import { textList } from "../../shared/content";
 import Link from "next/link";
 import type {
   ProductCategory,

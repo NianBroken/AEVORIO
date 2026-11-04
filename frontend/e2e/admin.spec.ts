@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { ResourceRecord } from "../../backend/contracts/content";
+import type { ResourceRecord } from "../../shared/content";
 
 const ROOT = path.resolve("../backend");
 const SIZES = [
@@ -26,7 +26,7 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
       "",
     ),
   );
-  const adminOrigin = runtime.backend.url as string;
+  const adminOrigin = runtime.frontend.url as string;
   test.setTimeout(240000);
   page.setDefaultTimeout(12000);
   const failures: string[] = [];

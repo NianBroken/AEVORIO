@@ -8,8 +8,8 @@
 
 | 位置 | 职责 |
 | --- | --- |
-| contracts | 前后台共用的内容类型、图标允许名单、字段规则基础 |
-| database/schema.sql | 完整数据库结构与空库初始示例 |
+| ../shared | 前后台共用的内容类型、图标允许名单、字段规则基础 |
+| database/default.sql | 完整数据库结构与空库初始示例 |
 | src/repositories | 公开内容的一致性读取与字段转换 |
 | src/services/resource-service.ts | 发布事务、版本冲突、引用、历史、恢复与结构约束 |
 | src/services/resource-definitions.ts | 可编辑实体、列与表单规则的唯一允许名单 |
@@ -17,7 +17,7 @@
 | src/middleware/admin-auth.ts | MySQL 会话、CSRF 与管理员检查 |
 | src/routes/admin-routes.ts | 管理请求解析与统一响应 |
 | src/runtime/supervisor.ts | 两个正式服务的无窗口守护与健康恢复 |
-| admin-ui | 管理界面源码、独立依赖和正式构建 |
+| 前端后台应用 | 后台界面已统一迁入 frontend/components/admin |
 | storage/media | 当前与历史媒体文件 |
 | storage/private | 会话密钥与管理员本机凭据，禁止提交 |
 | storage/backups | 数据、结构、媒体与配置备份，禁止提交 |
@@ -29,21 +29,19 @@
 
 ```powershell
 npm --prefix backend ci
-npm --prefix backend/admin-ui ci
 npm --prefix frontend ci
 npm --prefix backend run db:init
 npm --prefix backend run check
 npm --prefix backend run lint
 npm --prefix backend run build
-npm --prefix backend run admin:build
 npm --prefix frontend run typecheck
 npm --prefix frontend run lint
 npm --prefix frontend run build
 ```
 
-backend/.env 保存实际连接配置。只填写 DB_HOST、DB_PORT、DB_USER、DB_PASSWORD、DB_NAME、BACKEND_HOST、BACKEND_PORT、FRONTEND_ORIGIN。内容管理员无法读取或修改数据库凭据。需要 HTTPS 时明确设置 ADMIN_ORIGIN 为对应 HTTPS 地址，Cookie 的 Secure 随该协议启用。本机 HTTP 正式构建使用当前 HTTP 地址。
+backend/.env 保存实际连接配置。只填写 DB_HOST、DB_PORT、DB_USER、DB_PASSWORD、DB_NAME、BACKEND_HOST、BACKEND_PORT、FRONTEND_ORIGIN。内容管理员无法读取或修改数据库凭据。需要 HTTPS 时明确设置 FRONTEND_ORIGIN 为对应 HTTPS 地址，Cookie 的 Secure 随该协议启用。本机 HTTP 正式构建使用当前 HTTP 地址。
 
-db:init 仅在空库导入 schema.sql 中的示例数据。已有项目库会先备份并在隔离库验证恢复，再执行兼容迁移。db:migrate 单独执行相同兼容迁移，不重新导入示例。迁移记录保存在 schema_versions，重复执行保留现有 ID、内容、图片关系和历史。
+db:init 仅在空库导入 default.sql 中的示例数据。已有项目库只做检查，不备份、不重置账号或业务内容。db:migrate 单独执行相同兼容迁移，不重新导入示例。迁移记录保存在 schema_versions，重复执行保留现有 ID、内容、图片关系和历史。
 
 首次空库初始化要求 storage/media 中已有随项目交付的原始媒体。media:generate 是示例素材生成工具，正式内容维护不执行该命令。
 
@@ -54,7 +52,7 @@ npm --prefix backend run admin:account -- administrator
 npm --prefix backend run admin:account -- administrator --reset
 ```
 
-首条命令创建管理员。第二条命令重置已存在管理员，并使其旧会话失效。工具生成随机临时密码，仅写入 storage/private/administrator-credentials.json，不在终端打印密码。该目录在 Windows 中只授权当前运行账户与 SYSTEM，子文件继承权限。首次登录必须改为至少十二个字符的新密码。
+首条命令创建管理员。第二条命令重置已存在管理员，并使其旧会话失效。工具生成随机临时密码，仅写入 storage/private/administrator-credentials.json，不在终端打印密码。该目录在 Windows 中只授权当前运行账户与 SYSTEM，子文件继承权限。首次登录必须设置 8 至 32 个 ASCII 可见字符的新密码，不允许空格。默认空库账号为 Nian，密码为 Nian123456，已有库初始化不会重置密码。
 
 正式后台由 Express 提供 /admin/。单一管理员角色拥有内容维护、立即发布和历史恢复权限。用户名菜单可修改管理密码，退出会删除当前会话。会话保存在 MySQL，不使用生产内存会话。
 
@@ -132,3 +130,13 @@ npm --prefix backend run audit:delivery
 每次正式启动会将上次日志保留到 reports/runtime-history，再建立当前运行日志。历史问题保留可追溯记录，当前 runtime-error.log 和 supervisor-error.log 用于判断本次运行状态。
 
 实现参考使用英文官方资料：[Express Session](https://github.com/expressjs/session)、[Vite 正式构建](https://vite.dev/guide/build)、[Ant Design](https://ant.design/components/overview)、[Sharp](https://sharp.pixelplumbing.com/)。
+
+## 固定端口与默认账号
+
+端口统一定义在 ../shared/ports.json。正式前台使用 24681，后端接口使用 24682，后台页面使用前端端口 24681，隔离验证服务从 24683 开始分配。远程 MySQL 保留 192.168.168.31:3306。
+
+从 frontend 目录执行 PowerShell 命令 ./scripts/start-site.ps1，启动脚本自动停止本项目旧守护进程，识别并终止目标端口占用进程，再启动两个正式服务。服务在隐藏守护进程中持续运行。执行 ./scripts/stop-site.ps1 才会主动停止。
+
+唯一默认数据库文件为 database/default.sql。从 backend 目录执行 npm run db:init，仅在空库时导入，已有项目库只检查，不重置密码。默认账号 Nian，默认密码 Nian123456，首次登录必须设置 8 至 32 个 ASCII 可见字符的新密码。空格、控制字符和非 ASCII 字符不接受。
+
+首次登录浏览器验收脚本为 frontend/scripts/verify-first-login.mjs，应从 frontend 目录执行。该脚本仅适用于首次初始化的验收环境，会实际修改管理员密码，不属于常规启动步骤。

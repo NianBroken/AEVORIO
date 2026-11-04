@@ -1,5 +1,7 @@
-import { lazy, Suspense, useEffect, useState, useRef } from "react";
-import { createRoot } from "react-dom/client";
+"use client";
+import NextImage from "next/image";
+import { PASSWORD_PATTERN, PASSWORD_MESSAGE } from "../../../shared/password";
+import { lazy, Suspense, useEffect, useState, useRef, useEffectEvent } from "react";
 import {
   App,
   Button,
@@ -33,11 +35,11 @@ import {
   type ResourceRecord,
   type ResourceType,
   type Values,
-} from "../../contracts/content";
+} from "../../../shared/content";
 import {
   DESIGN_WIDTH,
   useScaledCanvas,
-} from "../../../frontend/lib/use-scaled-canvas";
+} from "../../lib/use-scaled-canvas";
 const Alert = lazy(
   () => import("antd/es/alert"),
 ) as unknown as (typeof import("antd"))["Alert"];
@@ -130,7 +132,7 @@ function Application() {
     if (!match) return;
     let active = true;
     const type = match[1] as ResourceType;
-    setView(type);
+    queueMicrotask(() => { if (active) setView(type); });
     void api<ResourceRecord>(
       `/resources/${type}/${encodeURIComponent(decodeURIComponent(match[2]!))}`,
     )
@@ -143,7 +145,7 @@ function Application() {
     return () => {
       active = false;
     };
-  }, [user?.id, user?.mustChange]);
+  }, [user]);
   const handleError = (e: unknown) => {
     if (e instanceof ApiError && e.status === 401) setUser(null);
     setError((e as Error).message);
@@ -159,9 +161,9 @@ function Application() {
         ),
       );
       if (ticket !== refreshTicket.current) return;
-      setMedia(refs[0]);
-      setCategories(refs[1]);
-      setPages(refs[2]);
+      setMedia(refs[0]!);
+      setCategories(refs[1]!);
+      setPages(refs[2]!);
       if (target === "overview") {
         const data = await api<NonNullable<typeof overview>>("/overview");
         if (ticket === refreshTicket.current) setOverview(data);
@@ -178,8 +180,9 @@ function Application() {
       if (ticket === refreshTicket.current) setBusy(false);
     }
   };
+  const refreshView = useEffectEvent(() => { if (user && !user.mustChange) void refresh(); });
   useEffect(() => {
-    if (user && !user.mustChange) void refresh();
+    queueMicrotask(() => refreshView());
   }, [view, user?.id, user?.mustChange, deleted]);
   const open = async (type: ResourceType, id: string) => {
     try {
@@ -650,7 +653,7 @@ function Application() {
                               render: (_, item) => (
                                 <div className="resource-name">
                                   {view === "media" && (
-                                    <img
+                                    <NextImage unoptimized width={160} height={100}
                                       src={`/media/${item.values.file_name}?v=${item.version}`}
                                       alt={String(item.values.alt_text)}
                                     />
@@ -850,7 +853,7 @@ function PasswordChange({ onChanged }: { onChanged: (user: User) => void }) {
     <div className="password-page">
       <section className="panel">
         <h1>设置管理密码</h1>
-        <p>首次使用必须更换临时密码，新密码至少十二个字符。</p>
+        <p>首次使用必须更换临时密码。新密码为 8 至 32 个 ASCII 可见字符，不含空格。</p>
         <Form
           layout="vertical"
           onFinish={async (values) => {
@@ -879,7 +882,7 @@ function PasswordChange({ onChanged }: { onChanged: (user: User) => void }) {
           <Form.Item
             name="newPassword"
             label="新密码"
-            rules={[{ required: true, min: 12, max: 128 }]}
+            rules={[{ required: true, pattern: PASSWORD_PATTERN, message: PASSWORD_MESSAGE }]}
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
@@ -1047,7 +1050,7 @@ function CreateDialog({
     </Modal>
   );
 }
-createRoot(document.getElementById("root")!).render(
+export default function AdminApplication() { return (
   <ConfigProvider
     button={{ autoInsertSpace: false }}
     locale={zhCN}
@@ -1084,5 +1087,5 @@ createRoot(document.getElementById("root")!).render(
         <Application />
       </Suspense>
     </App>
-  </ConfigProvider>,
-);
+  </ConfigProvider>
+); }

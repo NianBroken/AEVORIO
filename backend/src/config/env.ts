@@ -1,3 +1,4 @@
+import ports from "../../../shared/ports.json";
 import path from "node:path";
 import dotenv from "dotenv";
 import { z } from "zod";
@@ -8,8 +9,8 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env"), quiet: true });
 // 所有端口、连接数及地址规则集中定义，避免在接口和数据库层分散拼接配置。
 const environmentSchema = z.object({
   BACKEND_HOST: z.string().default("127.0.0.1"),
-  BACKEND_PORT: z.coerce.number().int().min(1).max(65_535).default(3101),
-  FRONTEND_ORIGIN: z.url().default("http://127.0.0.1:3000"),
+  BACKEND_PORT: z.coerce.number().refine((port) => port === ports.backend, "后端端口必须为 24682。").default(ports.backend),
+  FRONTEND_ORIGIN: z.url().refine((value) => Number(new URL(value).port) === ports.frontend, "前端端口必须为 24681。").default(`http://127.0.0.1:${ports.frontend}`),
   DB_HOST: z.string().trim().min(1, "DB_HOST 不能为空。"),
   DB_PORT: z.coerce.number().int().min(1).max(65_535).default(3306),
   DB_USER: z.string().trim().min(1, "DB_USER 不能为空。"),

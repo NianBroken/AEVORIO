@@ -7,7 +7,7 @@ import sharp from 'sharp';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readEnvironment } from '../src/config/env';
 import { createApp } from '../src/app';
-import { hashPassword } from '../src/routes/admin-routes';
+import { hashPassword } from '../src/services/password-service';
 import { ResourceService } from '../src/services/resource-service';
 import { MediaService } from '../src/services/media-service';
 import { MysqlSiteRepository } from '../src/repositories/site-repository';
@@ -18,12 +18,12 @@ import {
   type ResourceRecord,
   type ResourceType,
   type Values,
-} from '../contracts/content';
+} from '../../shared/content';
 
 const testName = `aevorio_test_admin_${Date.now()}`;
 const mediaRoot = path.resolve('storage', testName, 'media');
 const password = randomUUID() + randomUUID();
-const origin = 'http://127.0.0.1:3101';
+const origin = 'http://127.0.0.1:24681';
 let database: mysql.Pool;
 let management: ResourceService;
 let app: ReturnType<typeof createApp>;
@@ -679,7 +679,7 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
   it('首次改密、旧会话失效、过期会话和登录限速均由服务端执行', async () => {
     const username = 'password-flow';
     const initial = randomUUID() + randomUUID();
-    const next = randomUUID() + randomUUID();
+    const next = randomUUID().replaceAll("-", "");
     await database.execute(
       'INSERT INTO admin_users(id,username,password_hash,must_change_password) VALUES(?,?,?,1)',
       [username, username, await hashPassword(initial)],
@@ -702,6 +702,13 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
     expect((await first.get('/api/v1/admin/overview')).status).toBe(403);
     const old = request.agent(app);
     expect((await login(old, initial)).status).toBe(200);
+    for (const invalid of ['1234567', 'x'.repeat(33), 'abc defg', 'abcd\tefg', '密码123456', 'abc\nefgx']) {
+      const rejected = await first.patch('/api/v1/admin/auth/password')
+        .set('Origin', origin).set('X-CSRF-Token', signed.body.Data.csrfToken)
+        .send({ currentPassword: initial, newPassword: invalid });
+      expect(rejected.status).toBe(400);
+      expect((await first.get('/api/v1/admin/overview')).status).toBe(403);
+    }
     const changed = await first
       .patch('/api/v1/admin/auth/password')
       .set('Origin', origin)

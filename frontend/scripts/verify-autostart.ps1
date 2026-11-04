@@ -12,7 +12,7 @@ for ($attempt = 0; $attempt -lt 120; $attempt++) {
     $created = if ($record.supervisor.startedAt -is [DateTime]) { $record.supervisor.startedAt.ToUniversalTime() } else { [DateTimeOffset]::Parse($record.supervisor.startedAt).UtcDateTime }
     if ($record.status -eq 'running' -and $created -ge $before.AddSeconds(-1)) {
         $checks = @()
-        foreach ($url in @(($record.frontend.url + '/'), ($record.frontend.url + '/products'), ($record.frontend.url + '/about'), ($record.backend.url + '/admin/'))) {
+        foreach ($url in @(($record.frontend.url + '/'), ($record.frontend.url + '/products'), ($record.frontend.url + '/about'), ($record.frontend.url + '/admin/'))) {
             $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 8
             if ($response.StatusCode -ne 200) { throw '开机任务启动后的实际页面访问失败。' }
             $checks += @{ url = $url; status = $response.StatusCode }

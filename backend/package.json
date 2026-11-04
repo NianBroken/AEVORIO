@@ -4,7 +4,7 @@
   "private": true,
   "author": "NianBroken",
   "description": "AEVORIO 企业网站 Express 服务",
-  "main": "dist/src/server.js",
+  "main": "dist/backend/src/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.build.json",
@@ -16,12 +16,11 @@
     "verify:live": "tsx scripts/verify-live-api.ts",
     "audit:delivery": "tsx scripts/audit-delivery.ts",
     "content:manage": "tsx scripts/maintain-content.ts",
-    "start": "node dist/src/server.js",
+    "start": "node dist/backend/src/server.js",
     "db:migrate": "tsx scripts/migrate-admin.ts",
     "site:backup": "tsx scripts/backup-site.ts",
     "site:restore": "tsx scripts/restore-site.ts",
     "admin:account": "tsx scripts/admin-account.ts",
-    "admin:build": "npm --prefix admin-ui run build",
     "coverage:report": "tsx scripts/report-coverage.ts",
     "test:browser:prepare": "tsx scripts/browser-verification.ts",
     "test:browser:cleanup": "tsx scripts/browser-verification.ts --cleanup"

@@ -16,7 +16,7 @@ import {
   type EditContext,
   type ResourceRecord,
 } from "./resource-service";
-import type { Values } from "../../contracts/content";
+import type { Values } from "../../../shared/content";
 
 const MAX_PIXELS = 40_000_000;
 const MAX_BYTES = 15_000_000;

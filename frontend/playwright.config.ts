@@ -3,7 +3,7 @@ import { defineConfig } from '@playwright/test';
 delete process.env.NO_COLOR;
 
 // 浏览器基准尺寸以同一个 1440 逻辑画布为准，单测与正式服务均通过真实接口。
-const baseURL = process.env.AEVORIO_E2E_BASE_URL ?? 'http://127.0.0.1:3000';
+const baseURL = process.env.AEVORIO_E2E_BASE_URL ?? 'http://127.0.0.1:24681';
 
 export default defineConfig({
   testDir: './e2e',

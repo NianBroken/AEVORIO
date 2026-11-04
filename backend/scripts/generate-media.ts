@@ -25,7 +25,7 @@ interface MediaEntry {
 }
 
 const rootDirectory = path.resolve(__dirname, "..");
-const schemaPath = path.join(rootDirectory, "database/schema.sql");
+const schemaPath = path.join(rootDirectory, "database/default.sql");
 const mediaDirectory = path.join(rootDirectory, "storage/media");
 
 async function main(): Promise<void> {

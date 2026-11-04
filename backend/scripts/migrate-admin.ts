@@ -7,7 +7,7 @@ import {
   INITIAL_PUBLIC_CONTENT,
   SECTION_NAMES,
   type Values,
-} from "../contracts/content";
+} from "../../shared/content";
 import { backupSite, verifyRestore } from "./backup-site";
 import { finalizeAdminData } from "./finalize-admin-data";
 
@@ -15,7 +15,7 @@ const MIGRATION_VERSION = 1;
 // 表定义只读取统一 SQL 文件，迁移通过实际列信息补齐兼容字段。
 export async function migrateAdmin(db: mysql.Connection): Promise<void> {
   const sql = await readFile(
-    path.resolve(__dirname, "../database/schema.sql"),
+    path.resolve(__dirname, "../database/default.sql"),
     "utf8",
   );
   const definitions = [

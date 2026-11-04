@@ -1,3 +1,4 @@
+import ports from "../../shared/ports.json";
 import { expect, test } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -24,9 +25,9 @@ test("内容接口失败时显示真实失败状态", async ({ page }) => {
       }),
     );
   });
-  const contentPort = await listen(contentServer);
+  const contentPort = await listen(contentServer, ports.failureServer);
   const portProbe = createServer();
-  const frontendPort = await listen(portProbe);
+  const frontendPort = await listen(portProbe, ports.failureFrontend);
   await close(portProbe);
   const child = spawn(
     process.execPath,
@@ -80,10 +81,10 @@ test("内容接口失败时显示真实失败状态", async ({ page }) => {
   }
 });
 
-async function listen(server: Server): Promise<number> {
+async function listen(server: Server, port: number): Promise<number> {
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
+    server.listen(port, "127.0.0.1", resolve);
   });
   return (server.address() as AddressInfo).port;
 }

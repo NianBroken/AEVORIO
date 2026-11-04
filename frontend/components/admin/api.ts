@@ -1,5 +1,5 @@
-import type { ApiEnvelope } from "../../contracts/site";
-import type { ResourceRecord, ResourceType } from "../../contracts/content";
+import type { ApiEnvelope } from "../../../shared/site";
+import type { ResourceRecord, ResourceType } from "../../../shared/content";
 const PAGE_LIMIT = 500;
 let csrf = "";
 export class ApiError extends Error {

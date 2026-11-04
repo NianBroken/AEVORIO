@@ -1,3 +1,4 @@
+import ports from "../../shared/ports.json";
 import { createServer } from "node:http";
 import express from "express";
 import path from "node:path";
@@ -29,7 +30,7 @@ void (async () => {
     }),
   );
   const server = createServer(app);
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(ports.testServer, "127.0.0.1", resolve));
   process.on("message", (message) => {
     if (message === "fail") failed = true;
     if (message === "recover") failed = false;

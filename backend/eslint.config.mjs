@@ -13,6 +13,5 @@ export default defineConfig([
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
-  {files:['admin-ui/src/**/*.{ts,tsx}'],languageOptions:{globals:globals.browser}},
   globalIgnores(['**/dist/**', '**/node_modules/**', 'storage/**', 'reports/**']),
 ]);

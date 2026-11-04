@@ -5,9 +5,9 @@
   "author": "NianBroken",
   "description": "AEVORIO 企业网站 Next.js 前端",
   "scripts": {
-    "dev": "next dev --hostname 127.0.0.1",
+    "dev": "node scripts/run-next.mjs dev",
     "build": "next build",
-    "start": "next start --hostname 127.0.0.1",
+    "start": "node scripts/run-next.mjs start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test:e2e": "playwright test"
@@ -16,7 +16,9 @@
     "lucide-react": "^0.547.0",
     "next": "^16.2.9",
     "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "react-dom": "^19.2.3",
+    "antd": "^6.6.8",
+    "@ant-design/icons": "^6.1.0"
   },
   "overrides": {
     "minimatch": "^11.0.1"

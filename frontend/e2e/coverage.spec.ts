@@ -1,3 +1,4 @@
+import ports from "../../shared/ports.json";
 import { test, expect, type Page } from "@playwright/test";
 import { createRequire } from "node:module";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -12,7 +13,7 @@ import {
   type ResourceType,
   type Values,
   type JsonValue,
-} from "../../backend/contracts/content";
+} from "../../shared/content";
 
 const backend = path.resolve("../backend");
 const backendRequire = createRequire(path.join(backend, "package.json"));
@@ -20,7 +21,7 @@ const mysql = backendRequire(
   "mysql2/promise",
 ) as typeof import("../../backend/node_modules/mysql2/promise");
 const { ResourceService } = backendRequire(
-  "./dist/src/services/resource-service.js",
+  "./dist/backend/src/services/resource-service.js",
 ) as typeof import("../../backend/src/services/resource-service");
 
 test("隔离环境逐对象核验全部资源字段的实际显示与恢复", async ({ page }) => {
@@ -116,7 +117,7 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
     const [ready] = (await once(server, "message")) as [{ port: number }];
     const apiOrigin = "http://127.0.0.1:" + ready.port;
     const probe = createServer();
-    await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) => probe.listen(ports.testFrontend, "127.0.0.1", resolve));
     const port = (probe.address() as { port: number }).port;
     await new Promise<void>((resolve) => probe.close(() => resolve()));
     const front = spawn(

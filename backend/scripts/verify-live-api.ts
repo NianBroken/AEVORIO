@@ -5,8 +5,7 @@ import { writeFile } from "node:fs/promises";
 void (async () => {
   const env = readEnvironment();
   const origin =
-    process.env.ADMIN_ORIGIN ??
-    `http://${env.BACKEND_HOST}:${env.BACKEND_PORT}`;
+    env.FRONTEND_ORIGIN;
   const results = [];
   for (const page of ["home", "products", "about"]) {
     const response = await fetch(new URL("/api/v1/site?page=" + page, origin));

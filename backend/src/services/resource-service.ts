@@ -3,8 +3,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
 import { ENTITIES, fieldsFor, sectionDefaults } from "./resource-definitions";
-import { SECTION_NAMES } from "../../contracts/content";
-import { REVISION_PAGE_SIZE } from "../../contracts/content";
+import { SECTION_NAMES } from "../../../shared/content";
+import { REVISION_PAGE_SIZE } from "../../../shared/content";
 import {
   getValue,
   setValue,
@@ -14,8 +14,8 @@ import {
   type ResourceType,
   type Values,
   type ResourceRecord,
-} from "../../contracts/content";
-export type { ResourceRecord } from "../../contracts/content";
+} from "../../../shared/content";
+export type { ResourceRecord } from "../../../shared/content";
 
 export class ManagementError extends Error {
   public constructor(

@@ -3,7 +3,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { readEnvironment } from "../src/config/env";
 import { createDatabasePool, closeDatabasePool } from "../src/database/pool";
-import { hashPassword } from "../src/routes/admin-routes";
+import { hashPassword } from "../src/services/password-service";
 import { secureDirectory } from "../src/utils/private-storage";
 
 // 本地账户工具只输出凭据文件位置，不在终端、源码或普通日志中记录密码。
