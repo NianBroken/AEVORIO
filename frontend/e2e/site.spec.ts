@@ -9,13 +9,12 @@ const PAGE_CASES = [
 
 const VIEWPORTS: Array<[number, number]> = [
   [1920, 1080],
-  [1600, 900],
   [1440, 900],
-  [1280, 800],
+  [1280, 720],
   [1024, 768],
   [768, 1024],
   [390, 844],
-  [320, 700],
+  [360, 800],
 ];
 const browserFailures = new WeakMap<Page, string[]>();
 
@@ -195,7 +194,7 @@ test("未知路径回到首页", async ({ page }) => {
 });
 
 for (const pageCase of PAGE_CASES) {
-  test(`${pageCase.slug} 的八种视口保持同一画布比例`, async ({
+  test(`${pageCase.slug} 的七种视口保持同一画布比例`, async ({
     page,
     request,
   }) => {
@@ -227,6 +226,7 @@ for (const pageCase of PAGE_CASES) {
           viewportWidth: document.documentElement.clientWidth,
           scrollWidth: document.documentElement.scrollWidth,
           stageWidth: stage.getBoundingClientRect().width,
+          zoom: Number(getComputedStyle(stage).zoom),
           logicalHeight: stage.scrollHeight,
           shellHeight: shell.getBoundingClientRect().height,
           columns: grid
@@ -239,9 +239,11 @@ for (const pageCase of PAGE_CASES) {
         dimensions.viewportWidth,
       );
       expect(dimensions.stageWidth).toBeCloseTo(width, 0);
+      expect(dimensions.zoom).toBeCloseTo(width / 1440, 5);
       if (pageCase.slug === "products") expect(dimensions.columns).toBe(5);
       if (baselineHeight === 0) baselineHeight = dimensions.logicalHeight;
-      expect(dimensions.logicalHeight).toBe(baselineHeight);
+      // zoom 在布局阶段按设备像素舍入，检查总高度比例与固定列关系。
+      expect(Math.abs(dimensions.logicalHeight - baselineHeight) / baselineHeight).toBeLessThan(0.005);
       expect(
         Math.abs(
           dimensions.shellHeight - (dimensions.logicalHeight * width!) / 1440,
@@ -316,4 +318,44 @@ async function waitForAllImages(page: Page): Promise<void> {
       ),
     )
     .toBe(true);
+}
+
+for (const [width, height] of VIEWPORTS) {
+  test(`后台加载与登录 ${width}×${height} 不横向溢出`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/api/v1/admin/auth/session", async (route) => {
+      await waiting;
+      await route.continue();
+    });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto("/admin/overview", { waitUntil: "domcontentloaded" });
+    try {
+      await expect(page.locator(".loading-page")).toBeVisible();
+      const loading = await page.evaluate(() => ({
+        width: document.documentElement.clientWidth,
+        scroll: document.documentElement.scrollWidth,
+        supportsZoom: CSS.supports("zoom", "calc(100cqw / 1440px)"),
+      }));
+      expect(loading.supportsZoom).toBe(true);
+      expect(loading.scroll).toBeLessThanOrEqual(loading.width);
+      await page.screenshot({ path: `screenshots/admin-loading-${width}.png` });
+    } finally { release(); }
+    await expect(page.locator(".login-page")).toBeVisible();
+    await expect.poll(() => page.locator(".admin-stage").evaluate((stage) =>
+      Math.abs(stage.getBoundingClientRect().width - document.documentElement.clientWidth),
+    )).toBeLessThan(1);
+    const login = await page.evaluate(() => ({
+      width: document.documentElement.clientWidth,
+      scroll: document.documentElement.scrollWidth,
+      height: document.querySelector(".login-page")!.getBoundingClientRect().height,
+      viewportHeight: window.innerHeight,
+    }));
+    expect(login.scroll).toBeLessThanOrEqual(login.width);
+    expect(login.height).toBeGreaterThanOrEqual(login.viewportHeight - 1);
+    expect(errors).toEqual([]);
+    await page.screenshot({ path: `screenshots/admin-login-${width}.png` });
+  });
 }

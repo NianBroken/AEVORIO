@@ -6,17 +6,16 @@ import type { ResourceRecord } from "../../shared/content";
 const ROOT = path.resolve("../backend");
 const SIZES = [
   [1920, 1080],
-  [1600, 900],
   [1440, 900],
-  [1280, 800],
+  [1280, 720],
   [1024, 768],
   [768, 1024],
   [390, 844],
-  [320, 700],
+  [360, 800],
 ];
 
 // 代表资源通过真实界面修改和恢复，保存期间核对公开页面，不直接改写数据库。
-test("后台实际管理、即时发布、历史恢复、上传与八种尺寸", async ({
+test("后台实际管理、即时发布、历史恢复、独立上传与七种尺寸", async ({
   page,
   context,
 }) => {
@@ -53,6 +52,7 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
   await expect(
     page.getByRole("heading", { name: "概览", exact: true }),
   ).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/overview$/u);
   await expect(page.locator(".sidebar nav button")).toHaveCount(6);
   await expect(
     page.locator(".sidebar").getByRole("button", { name: "媒体资源" }),
@@ -80,11 +80,13 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
       scroll: document.documentElement.scrollWidth,
       client: document.documentElement.clientWidth,
       documentHeight: document.documentElement.scrollHeight,
+      zoom: Number(getComputedStyle(document.querySelector(".admin-stage")!).zoom),
       stageHeight: document
         .querySelector(".admin-stage")!
         .getBoundingClientRect().height,
     }));
-    expect(value.scroll).toBeLessThanOrEqual(value.client + 1);
+    expect(value.scroll).toBeLessThanOrEqual(value.client);
+    expect(value.zoom).toBeCloseTo(value.client / 1440, 5);
     measurements.push({ width, height, ...value });
     await page.screenshot({
       path: `screenshots/admin-overview-${width}.png`,
@@ -192,6 +194,7 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
       .getByRole("button", { name: "编辑", exact: true })
       .first()
       .click();
+    await expect(page).toHaveURL(new RegExp(`/admin/[^/]+/${item.type}/${encodeURIComponent(baseline.id)}`));
     await page.getByLabel(item.field, { exact: true }).fill(item.value);
     if (item.type === "products") {
       await page.getByRole("tab", { name: "图片与图标", exact: true }).click();
@@ -305,15 +308,18 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
       response.url().endsWith("/media/uploads") &&
       response.request().method() === "POST",
   );
-  await page
-    .locator(".editor-form .ant-form-item")
-    .filter({ has: page.getByLabel("图片", { exact: true }) })
-    .locator("input[type=file]")
-    .setInputFiles(path.join(ROOT, "storage/media/home-engineering.png"));
+  const originalMedia = previousHero.relatedMedia.find((media: ResourceRecord) => media.id === String(previousHero.values.media_id));
+  expect(originalMedia).toBeTruthy();
+  const uploadFixture = path.join(ROOT, "storage/media", String(originalMedia.values.file_name));
+  const imageField = page.locator(".editor-form .ant-form-item").filter({ has: page.locator("label", { hasText: /^图片$/u }) });
+  await expect(imageField.locator(".ant-select")).toHaveCount(0);
+  await imageField.locator("input[type=file]").setInputFiles(uploadFixture);
   const uploadedResponse = await uploadResponse;
   expect(uploadedResponse.ok()).toBe(true);
-  const selectedMedia = String((await uploadedResponse.json()).Data.id);
-  const uploadedMedia = await api(`/resources/media/${selectedMedia}`);
+  const uploadedMedia = (await uploadedResponse.json()).Data;
+  const selectedMedia = String(uploadedMedia.id);
+  expect(selectedMedia).not.toBe(String(previousHero.values.media_id));
+  expect(uploadedMedia.values.file_name).not.toBe(originalMedia.values.file_name);
   await page.getByRole("button", { name: "保存并发布", exact: true }).click();
   await expect
     .poll(async () => (await api(`/resources/sections/${hero.id}`)).values.media_id)
@@ -337,18 +343,6 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
     .poll(async () => (await api(`/resources/sections/${hero.id}`)).values.media_id)
     .toBe(previousHero.values.media_id);
   await page.getByRole("button", { name: "返回列表", exact: true }).click();
-  const uploadedId = String(selectedMedia);
-  const uploadedRecord = await api(`/resources/media/${uploadedId}`);
-  await page.request.delete(
-    adminOrigin + `/api/v1/admin/resources/media/${uploadedId}`,
-    {
-      headers: { Origin: adminOrigin, "X-CSRF-Token": session.csrfToken },
-      data: {
-        version: uploadedRecord.version,
-        operationId: crypto.randomUUID(),
-      },
-    },
-  );
   await navigate(page, "产品介绍设置");
   await page.getByRole("button", { name: "产品类别", exact: true }).click();
   await page.getByRole("button", { name: "创建产品类别", exact: true }).click();
@@ -383,9 +377,14 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
     .filter({ hasText: "界面创建验证类别" })
     .last()
     .click();
-  await page.getByLabel("图片", { exact: true }).focus();
-  await page.getByLabel("图片", { exact: true }).press("ArrowDown");
-  await page.getByLabel("图片", { exact: true }).press("Enter");
+  await expect(page.locator(".ant-modal-body .ant-form-item").filter({ has: page.locator("label", { hasText: /^图片$/u }) }).locator(".ant-select")).toHaveCount(0);
+  const productUpload = page.waitForResponse((response) => response.url().endsWith("/media/uploads") && response.request().method() === "POST");
+  await page.locator(".ant-modal-body input[type=file]").setInputFiles(uploadFixture);
+  const productMediaResponse = await productUpload;
+  expect(productMediaResponse.ok()).toBe(true);
+  const productMedia = (await productMediaResponse.json()).Data;
+  expect(productMedia.id).not.toBe(selectedMedia);
+  expect(productMedia.values.file_name).not.toBe(uploadedMedia.values.file_name);
   await page.getByRole("button", { name: "创建并发布", exact: true }).click();
   await expect(
     page.getByRole("heading", {
@@ -407,7 +406,7 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
   await navigate(page, "产品介绍设置");
   await page.getByRole("button", { name: "页面模块", exact: true }).click();
   await page.getByLabel("搜索资源").clear();
-  await page.getByRole("button", { name: "创建页面模块", exact: true }).click();
+  await page.getByRole("button", { name: /创建页面模块$/u }).click();
   await page.getByLabel("名称或标题", { exact: true }).fill("界面创建验证板块");
   await page
     .getByLabel("内容说明", { exact: true })
@@ -460,6 +459,9 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
   const linked = await context.newPage();
   await linked.goto(adminOrigin + "/admin/#/settings/company_name");
   await expect(linked.locator(".editor-toolbar h2")).toHaveText("公司名称");
+  await expect(linked).toHaveURL(/\/admin\/global\/settings\/company_name$/u);
+  await linked.reload();
+  await expect(linked.locator(".editor-toolbar h2")).toHaveText("公司名称");
   await linked.close();
   await navigate(page, "个人设置");
   await expect(page.getByRole("heading", { name: "管理员账号", exact: true })).toBeVisible();
@@ -474,6 +476,8 @@ test("后台实际管理、即时发布、历史恢复、上传与八种尺寸",
         measurements,
         upload: true,
         inlineImageUploadAndHistory: true,
+        independentMediaPerUpload: true,
+        realRoutesAndRefresh: true,
         recoverableDelete: true,
         createCategory: true,
         createProduct: true,

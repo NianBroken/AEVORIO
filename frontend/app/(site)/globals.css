@@ -68,17 +68,20 @@ img {
 }
 
 .scaled-page-shell {
+  container-type: inline-size;
   position: relative;
   width: 100%;
   min-width: 0;
 }
 
 .design-stage {
-  position: absolute;
+  transform: translateZ(0);
+  zoom: var(--canvas-scale, calc(100cqw / 1440px));
+  position: relative;
   top: 0;
   left: 0;
   width: var(--canvas-width);
-  min-height: 100vh;
+  min-height: var(--scaled-viewport-height, 100vh);
   isolation: isolate;
   transform-origin: top left;
   background:

@@ -402,3 +402,11 @@ INSERT INTO `site_settings` (`setting_key`, `setting_value`, `updated_at`, `vers
 INSERT INTO `site_settings` (`setting_key`, `setting_value`, `updated_at`, `version`) VALUES ('public_content', '{\"ink\": \"#26352f\", \"sky\": \"#6d8790\", \"clay\": \"#b77457\", \"font\": \"system\", \"line\": \"#d9e0d7\", \"logo\": \"\", \"sage\": \"#9ca487\", \"paper\": \"#f1f3ef\", \"copper\": \"#d4a16c\", \"forest\": \"#376d58\", \"contact\": \"\", \"favicon\": \"site-favicon\", \"navHome\": \"首页\", \"demoNote\": \"此板卡为技术外观示例，不表示已量产或正式销售。\", \"inkMuted\": \"#69776e\", \"logoIcon\": \"CircuitBoard\", \"navAbout\": \"关于我们\", \"navLabel\": \"网站主导航\", \"skipLink\": \"跳至当前页面主要内容\", \"closeIcon\": \"X\", \"copyright\": \"\", \"paperSoft\": \"#e9ede7\", \"decoration\": \"dots\", \"dialogIcon\": \"ArrowUpRight\", \"footerIcon\": \"CircuitBoard\", \"footerNote\": \"展示产品、服务和协作内容均为可编辑示例，不表示已量产、取得认证或存在实际合作承诺。\", \"forestDeep\": \"#294b3e\", \"headerIcon\": \"ArrowUpRight\", \"headerNote\": \"工程实践\", \"homeSuffix\": \"首页\", \"paperWhite\": \"#fbfcfa\", \"navProducts\": \"产品介绍\", \"brandTagline\": \"PCB / HARDWARE ENGINEERING\", \"dialogCaption\": \"硬件示例\", \"emptyProducts\": \"此类别暂未发布产品。\", \"featuresTitle\": \"板卡方向\", \"footerSummary\": \"项目示例内容，可依照真实资料独立更新\", \"footerNavLabel\": \"页脚导航\", \"dialogReference\": \"HARDWARE REFERENCE\", \"unavailableHome\": \"首页内容暂不可用\", \"demoProductLabel\": \"示例产品\", \"imageUnavailable\": \"图像不可读取\", \"openProductLabel\": \"打开 {name} 产品说明\", \"productArrowIcon\": \"ChevronRight\", \"productGridLabel\": \"{name}产品\", \"unavailableAbout\": \"企业介绍暂不可用\", \"unavailableLabel\": \"AE / CONTENT READINESS\", \"closeProductLabel\": \"关闭产品说明\", \"defaultShareImage\": \"\", \"productCountLabel\": \"产品样例\", \"unavailableMessage\": \"网页内容服务暂不可用，请稍后重新加载。\", \"specificationsTitle\": \"接口与结构\", \"unavailableProducts\": \"产品目录暂不可用\"}', '2026-11-04 00:27:00', 1);
 
 SET FOREIGN_KEY_CHECKS=1;
+
+CREATE TABLE IF NOT EXISTS media_ownership (
+  media_id VARCHAR(96) PRIMARY KEY,
+  owner_type VARCHAR(24) NOT NULL,
+  owner_id VARCHAR(96) NOT NULL,
+  field_key VARCHAR(240) NOT NULL,
+  claimed TINYINT(1) NOT NULL DEFAULT 1
+) CHARACTER SET utf8mb4;

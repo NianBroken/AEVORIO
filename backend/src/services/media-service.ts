@@ -1,3 +1,4 @@
+import { initializeOwnership } from "./media-ownership";
 import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir,
@@ -20,6 +21,7 @@ import type { Values } from "../../../shared/content";
 
 const MAX_PIXELS = 40_000_000;
 const MAX_BYTES = 15_000_000;
+const UPLOAD_GRACE_HOURS = 24;
 const decode = (value: unknown): Values =>
   typeof value === "string" ? JSON.parse(value) : (value as Values);
 
@@ -35,6 +37,7 @@ export class MediaService {
     context: EditContext,
     replacement?: { id: string; version: number },
   ): Promise<ResourceRecord> {
+    await initializeOwnership(this.resources.database);
     return this.withFileLock(() =>
       this.uploadLocked(file, context, replacement),
     );
@@ -184,6 +187,7 @@ export class MediaService {
             JSON.stringify({ ...metadata, alt_text: name, caption: "" }),
           ],
         );
+        await db.execute("INSERT INTO media_ownership(media_id,owner_type,owner_id,field_key,claimed) VALUES(?, 'upload', ?, '',0)", [id, context.actorId]);
         const record = await this.resources.get("media", id, db);
         await db.execute(
           "INSERT INTO content_revisions(resource_type,resource_id,version,snapshot_json,actor_id,operation_id) VALUES(?,?,?,?,?,?)",
@@ -226,6 +230,7 @@ export class MediaService {
     for (const file of await readdir(staging))
       if (file.endsWith(".tmp"))
         await rm(path.join(staging, file), { force: true });
+    await this.cleanup();
     await this.verifyHistoricalFiles();
   }
 
@@ -237,6 +242,8 @@ export class MediaService {
     removed: string[];
     retained: number;
   }> {
+    await initializeOwnership(this.resources.database);
+    await this.removeAbandonedUploads();
     const [rows] = await this.resources.database.query<RowDataPacket[]>(
       "SELECT file_name FROM media_assets",
     );
@@ -267,6 +274,32 @@ export class MediaService {
       }
     }
     return { removed, retained: keep.size };
+  }
+
+  // 上传宽限期内保留未发布文件，业务数据与业务历史共同阻止过期图片被清理。
+  private async removeAbandonedUploads(): Promise<void> {
+    const db = await this.resources.database.getConnection();
+    try {
+      await db.beginTransaction();
+      await db.query("SELECT id FROM pages ORDER BY id FOR UPDATE");
+      const [candidates] = await db.execute<RowDataPacket[]>("SELECT m.id,m.file_name FROM media_assets m JOIN media_ownership o ON o.media_id=m.id WHERE o.claimed=0 AND m.created_at < TIMESTAMPADD(HOUR,?,CURRENT_TIMESTAMP) FOR UPDATE", [-UPLOAD_GRACE_HOURS]);
+      const protectedValues: string[] = [];
+      for (const table of ["site_settings", "pages", "page_sections", "products", "product_categories"]) {
+        const [records] = await db.query<RowDataPacket[]>("SELECT * FROM ??", [table]);
+        protectedValues.push(...records.map(record => JSON.stringify(record)));
+      }
+      const [revisions] = await db.query<RowDataPacket[]>("SELECT snapshot_json FROM content_revisions WHERE resource_type<>'media'");
+      protectedValues.push(...revisions.map(record => JSON.stringify(record.snapshot_json)));
+      for (const candidate of candidates) {
+        if (protectedValues.some(value => value.includes(String(candidate.id)) || value.includes(String(candidate.file_name)))) continue;
+        await db.execute("DELETE FROM content_revisions WHERE resource_type='media' AND resource_id=?", [candidate.id]);
+        await db.execute("DELETE FROM media_versions WHERE media_id=?", [candidate.id]);
+        await db.execute("DELETE FROM media_ownership WHERE media_id=? AND claimed=0", [candidate.id]);
+        await db.execute("DELETE FROM media_assets WHERE id=?", [candidate.id]);
+      }
+      await db.commit();
+    } catch (error) { await db.rollback(); throw error; }
+    finally { db.release(); }
   }
 
   private async withFileLock<T>(action: () => Promise<T>): Promise<T> {

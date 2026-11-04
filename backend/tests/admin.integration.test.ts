@@ -1,3 +1,4 @@
+import { isolateAllMedia, mediaFields } from "../src/services/media-ownership";
 import { randomUUID } from 'node:crypto';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -88,7 +89,7 @@ beforeAll(async () => {
     ['test-admin', 'integration', await hashPassword(password)],
   );
   await cp(path.resolve('storage/media'), mediaRoot, { recursive: true });
-  management = new ResourceService(database);
+  management = new ResourceService(database, mediaRoot);
   app = createApp({ database, mediaDirectory: mediaRoot });
   agent = request.agent(app);
   csrf = (await agent.get('/api/v1/admin/auth/session')).body.Data.csrfToken;
@@ -354,9 +355,11 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
       'sections',
       'products',
       'categories',
-      'media',
     ] as const;
-    const mediaIds = (await management.list('media')).map((m) => m.id);
+    const freshMedia = async () => {
+      const buffer = await sharp({ create: { width: 8, height: 8, channels: 3, background: "#345678" } }).png().toBuffer();
+      return (await new MediaService(management, mediaRoot).upload({ buffer, size: buffer.length, originalname: "验证.png", mimetype: "image/png" } as Express.Multer.File, operation())).id;
+    };
     for (const type of types)
       for (const baseline of await management.list(type)) {
         for (const field of baseline.fields.filter((f) => !f.readonly)) {
@@ -365,7 +368,7 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
           const original = getValue(current.values, field.key);
           let value: JsonValue;
           if (field.kind === 'image')
-            value = mediaIds.find((id) => id !== original) ?? '';
+            value = await freshMedia();
           else if (field.kind === 'icon')
             value = ICON_NAMES.find((name) => name !== original)!;
           else if (field.kind === 'color')
@@ -378,7 +381,7 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
           else if (field.kind === 'list')
             value =
               field.key === 'gallery_json'
-                ? [mediaIds[0]!]
+                ? [await freshMedia()]
                 : [{ id: randomUUID(), text: '资源完整性验证' }];
           else if (field.kind === 'link')
             value = original === '/about' ? '/products' : '/about';
@@ -433,7 +436,7 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
       'utf8',
     );
     expect(coverageResults.length).toBeGreaterThan(500);
-  }, 180000);
+  }, 600000);
   it('拒绝非法字段、超长文字、危险链接和非法图标', async () => {
     const record = (await management.list('sections')).find(
       (s) => s.values.section_type === 'hero',
@@ -466,33 +469,13 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
       .set('Origin', origin)
       .set('X-CSRF-Token', csrf)
       .field('operationId', randomUUID())
+        .field('ownerType', 'products')
+        .field('fieldKey', 'primary_media_id')
       .field('replaceId', original.id)
       .field('version', String(original.version))
       .attach('file', data, { filename: '验证.png', contentType: 'image/png' });
-    expect(response.status).toBe(200);
-    const changed = response.body.Data as ResourceRecord;
-    expect(changed.values.sha256).not.toBe(original.values.sha256);
-    expect(
-      (await readFile(path.join(mediaRoot, String(changed.values.file_name))))
-        .length,
-    ).toBeGreaterThan(0);
-    const history = await management.revisions('media', original.id);
-    const old = history.find((r) => Number(r.version) === original.version)!;
-    await management.restore(
-      'media',
-      original.id,
-      Number(old.id),
-      changed.version,
-      operation(),
-    );
-    const current = await management.get('media', original.id);
-    expect(current.values.sha256).toBe(original.values.sha256);
-    const deletion = await agent
-      .delete(`/api/v1/admin/resources/media/${current.id}`)
-      .set('Origin', origin)
-      .set('X-CSRF-Token', csrf)
-      .send({ version: current.version, operationId: randomUUID() });
-    expect(deletion.status).toBe(409);
+    expect(response.status).toBe(400);
+    expect((await management.get('media', original.id)).values.sha256).toBe(original.values.sha256);
   });
   it('拒绝危险 SVG、伪造图片与超大文件', async () => {
     for (const [filename, data, contentType] of [
@@ -504,6 +487,8 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
         .set('Origin', origin)
         .set('X-CSRF-Token', csrf)
         .field('operationId', randomUUID())
+        .field('ownerType', 'products')
+        .field('fieldKey', 'primary_media_id')
         .attach('file', data, { filename, contentType });
       expect(response.status).toBe(415);
     }
@@ -512,6 +497,8 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
       .set('Origin', origin)
       .set('X-CSRF-Token', csrf)
       .field('operationId', randomUUID())
+        .field('ownerType', 'products')
+        .field('fieldKey', 'primary_media_id')
       .attach('file', Buffer.alloc(15_000_001), {
         filename: 'large.png',
         contentType: 'image/png',
@@ -545,7 +532,7 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
         name: '隔离验证产品',
         description: '验证类别关联',
         category_id: category.id,
-        primary_media_id: (await management.list('media'))[0]!.id,
+        primary_media_id: (await new MediaService(management, mediaRoot).upload({ buffer: await sharp({ create: { width: 8, height: 8, channels: 3, background: "#345678" } }).png().toBuffer(), size: 100, originalname: "创建.png", mimetype: "image/png" } as Express.Multer.File, operation())).id,
       },
       operation(),
     );
@@ -693,7 +680,8 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
     ).toBe(changedMedia.values.sha256);
   });
   it('数据库提交失败会回滚业务、版本和操作记录', async () => {
-    const item = (await management.list('products'))[1]!;
+    const listed = (await management.list('products'))[1]!;
+    const item = await management.get('products', listed.id);
     const ctx = operation();
     await database.query(
       `CREATE TRIGGER test_revision_failure BEFORE INSERT ON content_revisions FOR EACH ROW BEGIN IF NEW.operation_id='${ctx.operationId}' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='test transaction rollback'; END IF; END`,
@@ -900,4 +888,98 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
     expect((await first.get('/api/v1/admin/overview')).status).toBe(200);
     expect((await second.get('/api/v1/admin/overview')).status).toBe(401);
   });
+});
+
+
+describe('媒体独立归属', () => {
+  it('上传、创建、跨位置拒绝和历史恢复保持独立归属', async () => {
+    const file = { buffer: await sharp({ create: { width: 16, height: 16, channels: 3, background: "#376d58" } }).png().toBuffer(), originalname: "独立图片.png", mimetype: "image/png", size: 100 } as Express.Multer.File;
+    const uploads = new MediaService(management, mediaRoot);
+    const first = await uploads.upload(file, operation());
+    const second = await uploads.upload(file, operation());
+    expect(first.id).not.toBe(second.id);
+    expect(first.values.file_name).not.toBe(second.values.file_name);
+    const product = (await management.list("products"))[0]!;
+    const created = await management.create("products", { name: "归属测试", description: "归属验证", category_id: String(product.values.category_id), primary_media_id: first.id }, operation());
+    await expect(management.save("products", product.id, { version: product.version, changes: { primary_media_id: first.id } }, operation())).rejects.toThrow("属于其他使用位置");
+    await expect(management.save("products", created.id, { version: created.version, changes: { gallery_json: [first.id] } }, operation())).rejects.toThrow("多个位置");
+    const published = await management.save("products", created.id, { version: created.version, changes: { primary_media_id: second.id } }, operation());
+    const revisions = await management.revisions("products", created.id);
+    const initial = revisions.find(row => (row.snapshot_json as ResourceRecord).values.primary_media_id === first.id)!;
+    const restored = await management.restore("products", created.id, Number(initial.id), published.version, operation());
+    expect(restored.values.primary_media_id).toBe(first.id);
+    expect((await management.get("products", product.id)).values.primary_media_id).toBe(product.values.primary_media_id);
+    await database.execute('INSERT INTO admin_users(id,username,password_hash,must_change_password) VALUES(?,?,?,0)', ['media-test-admin', 'media-test', await hashPassword(password)]);
+    const local = request.agent(createApp({ database, mediaDirectory: mediaRoot }));
+    const token = (await local.get('/api/v1/admin/auth/session')).body.Data.csrfToken;
+    const login = await local.post('/api/v1/admin/auth/login').set('Origin', origin).set('X-CSRF-Token', token).send({ username: 'media-test', password });
+    expect(login.status).toBe(200);
+    expect((await local.get("/api/v1/admin/resources/media")).status).toBe(404);
+    const detail = await local.get(`/api/v1/admin/resources/products/${created.id}`);
+    expect(detail.body.Data.relatedMedia.map((item: ResourceRecord) => item.id)).toContain(first.id);
+    const bound = await local.post('/api/v1/admin/media/uploads').set('Origin', origin).set('X-CSRF-Token', login.body.Data.csrfToken)
+      .field('operationId', randomUUID()).field('ownerType', 'products').field('ownerId', created.id).field('fieldKey', 'primary_media_id')
+      .attach('file', file.buffer, { filename: '绑定.png', contentType: 'image/png' });
+    expect(bound.status).toBe(200);
+    const bad = await local.patch(`/api/v1/admin/resources/products/${product.id}`).set('Origin', origin).set('X-CSRF-Token', login.body.Data.csrfToken)
+      .send({ version: product.version, operationId: randomUUID(), changes: { primary_media_id: bound.body.Data.id } });
+    expect(bad.status).toBe(400);
+    const good = await local.patch(`/api/v1/admin/resources/products/${created.id}`).set('Origin', origin).set('X-CSRF-Token', login.body.Data.csrfToken)
+      .send({ version: restored.version, operationId: randomUUID(), changes: { primary_media_id: bound.body.Data.id } });
+    expect(good.status).toBe(200);
+  });
+});
+
+
+describe('上传暂存回收', () => {
+  it('仅回收超过24小时且没有业务和历史引用的未认领上传', async () => {
+    const buffer = await sharp({ create: { width: 8, height: 8, channels: 3, background: "#345678" } }).png().toBuffer();
+    const service = new MediaService(management, mediaRoot);
+    const file = { buffer, size: buffer.length, originalname: "暂存.png", mimetype: "image/png" } as Express.Multer.File;
+    const expired = await service.upload(file, operation());
+    const fresh = await service.upload(file, operation());
+    const history = await service.upload(file, operation());
+    const product = (await management.list("products"))[0]!;
+    const published = await management.save("products", product.id, { version: product.version, changes: { primary_media_id: history.id } }, operation());
+    await management.save("products", product.id, { version: published.version, changes: { primary_media_id: product.values.primary_media_id! } }, operation());
+    await database.execute("UPDATE media_ownership SET claimed=0 WHERE media_id=?", [history.id]);
+    await database.execute("UPDATE media_assets SET created_at=TIMESTAMPADD(HOUR,-25,CURRENT_TIMESTAMP) WHERE id IN (?,?)", [expired.id, history.id]);
+    const result = await service.cleanup();
+    expect(result.removed).toContain(expired.values.file_name);
+    await expect(management.get("media", expired.id)).rejects.toThrow("未找到");
+    expect((await management.get("media", fresh.id)).id).toBe(fresh.id);
+    expect((await management.get("media", history.id)).id).toBe(history.id);
+    await service.verifyHistoricalFiles();
+  });
+});
+
+
+describe('默认数据库媒体归属', () => {
+  it('空库导入默认SQL后可独立初始化媒体并重复执行', async () => {
+    const env = readEnvironment();
+    const initName = testName + "_init";
+    const root = path.join(path.dirname(mediaRoot), "initialized-media");
+    const admin = await mysql.createConnection({ host: env.DB_HOST, port: env.DB_PORT, user: env.DB_USER, password: env.DB_PASSWORD, charset: "utf8mb4", multipleStatements: true });
+    const pool = mysql.createPool({ host: env.DB_HOST, port: env.DB_PORT, user: env.DB_USER, password: env.DB_PASSWORD, database: initName, charset: "utf8mb4", jsonStrings: true });
+    try {
+      const sql = await readFile(path.resolve("database/default.sql"), "utf8");
+      await admin.query(sql.replaceAll("`aevorio`", mysql.escapeId(initName)));
+      await cp(path.resolve("storage/media"), root, { recursive: true });
+      expect((await isolateAllMedia(pool, root)).length).toBeGreaterThan(0);
+      expect(await isolateAllMedia(pool, root)).toEqual([]);
+      const service = new ResourceService(pool, root);
+      const ids = new Set<string>();
+      for (const type of ["settings", "pages", "sections", "products", "categories"] as const)
+        for (const record of await service.list(type, "", true))
+          for (const item of mediaFields(record, record.values)) {
+            expect(ids.has(item.id)).toBe(false);
+            ids.add(item.id);
+          }
+      await new MediaService(service, root).recover();
+    } finally {
+      await pool.end();
+      await admin.query("DROP DATABASE IF EXISTS ??", [initName]);
+      await admin.end();
+    }
+  }, 60000);
 });

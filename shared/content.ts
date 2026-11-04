@@ -34,6 +34,7 @@ export interface FieldDefinition {
   readonly?: boolean;
 }
 export interface ResourceRecord {
+  relatedMedia?: ResourceRecord[];
   id: string;
   type: ResourceType;
   title: string;

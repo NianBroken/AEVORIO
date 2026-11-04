@@ -11,9 +11,10 @@ export function useScaledCanvas() {
     let frame = 0;
     const measure = () => {
       if (disposed) return;
-      const width = document.documentElement.clientWidth;
+      const width = stage.parentElement?.clientWidth ?? document.documentElement.clientWidth;
       if (width <= 0) return;
       const scale = width / DESIGN_WIDTH;
+      stage.style.setProperty('--canvas-scale', String(scale));
       stage.style.setProperty(
         '--scaled-viewport-height',
         `${window.innerHeight / scale}px`,
@@ -35,6 +36,7 @@ export function useScaledCanvas() {
     };
     const observer = new ResizeObserver(update);
     observer.observe(stage);
+    if (stage.parentElement) observer.observe(stage.parentElement);
     window.addEventListener('resize', update);
     window.addEventListener('scroll', update, { passive: true });
     window.visualViewport?.addEventListener('resize', update);

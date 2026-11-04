@@ -1,3 +1,4 @@
+import { initializeOwnership, claimMedia, isolateRecordMedia, mediaFields } from "./media-ownership";
 import { randomUUID, createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -46,7 +47,7 @@ const jsonParse = (value: unknown): JsonValue =>
 
 // 统一资源服务协调权限之外的业务约束、事务、乐观并发、版本与引用关系。
 export class ResourceService {
-  public constructor(public readonly database: Pool) {}
+  public constructor(public readonly database: Pool, private readonly mediaRoot = path.resolve("storage/media")) {}
   public async list(
     type: ResourceType,
     query = "",
@@ -101,7 +102,10 @@ export class ResourceService {
         1002,
         "未找到指定管理对象，请重新读取列表。",
       );
-    return this.map(type, rows[0]);
+    const record = this.map(type, rows[0]);
+    if (type !== "media")
+      record.relatedMedia = await Promise.all([...new Set(mediaFields(record, record.values).map(item => item.id))].map(id => this.get("media", id, db)));
+    return record;
   }
   private map(type: ResourceType, row: RowDataPacket): ResourceRecord {
     const entity = ENTITIES[type];
@@ -180,6 +184,7 @@ export class ResourceService {
     deleted?: boolean,
     pins?: Record<string, Values>,
   ): Promise<ResourceRecord> {
+    await initializeOwnership(this.database);
     const db = await this.database.getConnection();
     await db.beginTransaction();
     try {
@@ -222,7 +227,7 @@ export class ResourceService {
         PROTECTED_SECTION_TYPES.has(String(old.values.section_type))
       )
         throw new ManagementError(400, 1001, "系统模块不能单独删除。");
-      const values = structuredClone(old.values);
+      let values = structuredClone(old.values);
       for (const key of Object.keys(request.changes))
         if (!old.fields.some((f) => f.key === key && !f.readonly))
           throw new ManagementError(
@@ -232,7 +237,10 @@ export class ResourceService {
           );
       for (const [key, value] of Object.entries(request.changes))
         setValue(values, key, value);
-      if (pins) await this.restoreReferences(db, values, pins);
+      if (pins) {
+        await this.restoreReferences(db, values, pins);
+        values = await isolateRecordMedia(db, { ...old, values }, this.mediaRoot);
+      }
       const validated = pins
         ? Object.fromEntries(
             old.fields
@@ -241,6 +249,7 @@ export class ResourceService {
           )
         : request.changes;
       await this.validateChanges(type, old, validated, db);
+      if (type !== "media") await claimMedia(db, old, values, context.actorId);
       for (const key of ["media_id", "og_media_id"])
         if (values[key] === "") values[key] = null;
       await this.record(db, old, context);
@@ -376,6 +385,7 @@ export class ResourceService {
     context: EditContext,
     action = "replace",
   ): Promise<ResourceRecord> {
+    await initializeOwnership(this.database);
     const db = await this.database.getConnection();
     await db.beginTransaction();
     try {
@@ -516,7 +526,7 @@ export class ResourceService {
       await this.record(db, await this.get("sections", id, db), context);
     }
   }
-  // 恢复对象时为已变化的共享图片建立独立引用，保留其他对象的当前图片。
+  // 历史图片按当前对象的字段归属恢复，其他对象的媒体保持不变。
   private async restoreReferences(
     db: PoolConnection,
     values: Values,
@@ -742,6 +752,7 @@ export class ResourceService {
       );
     const entity = ENTITIES[type];
     const id = type === "sections" ? null : randomUUID();
+    await initializeOwnership(this.database);
     const db = await this.database.getConnection();
     await db.beginTransaction();
     try {
@@ -885,6 +896,7 @@ export class ResourceService {
         );
       }
       const record = await this.get(type, id ?? String(result.insertId), db);
+      await claimMedia(db, record, record.values, context.actorId);
       await this.assertSiteIntegrity(db);
       await this.record(db, record, context);
       await db.execute(
@@ -1004,7 +1016,7 @@ export class ResourceService {
                 sectionKey: item.values.section_key ?? null,
                 sectionType: item.values.section_type ?? null,
               },
-              adminPath: `/admin/#/${type}/${item.id}`,
+              adminPath: `/admin/${type === "settings" ? "global" : type === "products" || type === "categories" ? "products" : String(type === "pages" ? item.values.slug : pageRows.find((page) => String(page.id) === String(item.values.page_id))?.slug || "home")}/${type}/${encodeURIComponent(item.id)}`,
               mapped: true,
               verified:
                 verified.get(key)?.verified === true &&

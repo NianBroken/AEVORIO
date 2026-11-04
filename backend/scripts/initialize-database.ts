@@ -1,3 +1,5 @@
+import { isolateAllMedia } from "../src/services/media-ownership";
+import { createDatabasePool, closeDatabasePool } from "../src/database/pool";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import mysql from "mysql2/promise";
@@ -41,6 +43,7 @@ void (async () => {
         schema.replaceAll("`aevorio`", mysql.escapeId(env.DB_NAME)),
       );
     }
+    await isolateAllMedia(createDatabasePool(env), path.resolve(__dirname, "../storage/media"));
     const [pages] = await db.query<mysql.RowDataPacket[]>(
       "SELECT p.slug,COUNT(s.id) AS count FROM pages p JOIN page_sections s ON s.page_id=p.id AND s.is_visible=1 AND s.is_deleted=0 GROUP BY p.id",
     );
@@ -49,6 +52,7 @@ void (async () => {
     console.log("MySQL 默认结构与页面约束核验通过，已有账号和内容未被重置。");
   } finally {
     await db.end();
+    await closeDatabasePool();
   }
 })().catch((error) => {
   console.error(

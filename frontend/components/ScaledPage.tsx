@@ -8,19 +8,18 @@ export function ScaledPage({
   children: ReactNode;
   pageName: string;
 }) {
-  const { stageRef, scale, height } = useScaledCanvas();
+  const { stageRef, scale } = useScaledCanvas();
   return (
     <div
       className="scaled-page-shell"
       data-page={pageName}
       data-scaled-layout={DESIGN_WIDTH}
       data-scale-factor={scale.toFixed(5)}
-      style={{ height: Math.ceil(height * scale) }}
     >
       <div
         ref={stageRef}
         className="design-stage"
-        style={{ width: DESIGN_WIDTH, transform: `scale(${scale})` }}
+        style={{ width: DESIGN_WIDTH }}
       >
         {children}
       </div>

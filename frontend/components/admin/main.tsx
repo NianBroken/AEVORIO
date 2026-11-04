@@ -92,6 +92,8 @@ const MENU: Array<{ key: View; label: string; icon: typeof CircuitBoard }> = [
 ];
 function Application() {
   const refreshTicket = useRef(0);
+  const addressTicket = useRef(0);
+  const [routeError, setRouteError] = useState("");
   const [frontendOrigin, setFrontendOrigin] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
@@ -119,8 +121,10 @@ function Application() {
     }>;
   } | null>(null);
   const [creating, setCreating] = useState(false);
+  const [listPage, setListPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
   const { message, modal } = App.useApp();
-  const { stageRef, scale, height } = useScaledCanvas();
+  const { stageRef } = useScaledCanvas();
   useEffect(() => {
     void api<{ user: User | null; frontendOrigin: string }>("/auth/session")
       .then((data) => {
@@ -130,45 +134,95 @@ function Application() {
       .catch((e) => setError(e.message))
       .finally(() => setReady(true));
   }, []);
-  // 资源清单中的稳定入口在登录后定位到对应对象，字段值仍由管理接口读取。
-  useEffect(() => {
+  // 地址承载页面、对象和列表条件，刷新与历史导航恢复相同工作区域。
+  const writeAddress = (target: View = view, resource: ResourceType = resourceView, id = "", replace = false) => {
+    const search = new URLSearchParams();
+    if (target === view) {
+      if (query) search.set("q", query);
+      if (filter) search.set("filter", filter);
+      if (deleted) search.set("deleted", "1");
+      if (listPage > 1) search.set("page", String(listPage));
+      if (pageSize !== 12) search.set("size", String(pageSize));
+    }
+    const base = `/admin/${target}` + (DEFAULT_RESOURCE[target] ? `/${resource}` : "");
+    const url = base + (id ? `/${encodeURIComponent(id)}` : "") + (search.size ? `?${search}` : "");
+    ++addressTicket.current;
+    setRouteError("");
+    window.history[replace ? "replaceState" : "pushState"](null, "", url);
+  };
+  const restoreAddress = useEffectEvent(async () => {
     if (!user || user.mustChange) return;
-    const match =
-      /^#\/(settings|pages|sections|products|categories)\/([^/]+)$/u.exec(
-        window.location.hash,
-      );
-    if (!match) return;
-    let active = true;
-    const type = match[1] as ResourceType;
-    void api<ResourceRecord>(
-      `/resources/${type}/${encodeURIComponent(decodeURIComponent(match[2]!))}`,
-    )
-      .then(async (item) => {
-        if (!active) return;
+    const ticket = ++addressTicket.current;
+    const address = window.location.href;
+    const current = () => ticket === addressTicket.current && address === window.location.href;
+    setRouteError("");
+    const parts = window.location.pathname.split("/").filter(Boolean);
+    const legacy = /^#\/(settings|pages|sections|products|categories)\/([^/]+)$/u.exec(window.location.hash);
+    const target = (parts[1] || "overview") as View;
+    if (!MENU.some((entry) => entry.key === target)) {
+      setRouteError("后台页面不存在，请从左侧菜单选择页面。");
+      return;
+    }
+    const resource = (parts[2] || DEFAULT_RESOURCE[target] || "settings") as ResourceType;
+    if (parts.length > 4 || (parts[2] && !VIEW_RESOURCES[target]?.includes(resource))) {
+      setRouteError("后台内容路径无效，请从左侧菜单返回所属页面。");
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    setView(target);
+    setResourceView(resource);
+    setQuery(params.get("q") || "");
+    setFilter(params.get("filter") || "");
+    setDeleted(params.get("deleted") === "1");
+    setListPage(Math.max(1, Number(params.get("page")) || 1));
+    setPageSize(Math.min(100, Math.max(1, Number(params.get("size")) || 12)));
+    setRecord(null);
+    setCreating(false);
+    if (parts[3] === "new") {
+      if (!["sections", "products", "categories"].includes(resource)) {
+        setRouteError("此内容类型不支持创建，请返回所属列表。");
+        return;
+      }
+      try {
+        const [categoryRows, pageRows] = await Promise.all([loadResources("categories"), loadResources("pages")]);
+        if (!current()) return;
+        setCategories(categoryRows);
+        setPages(pageRows);
+        setCreating(true);
+      } catch (e) { if (current()) setRouteError((e as Error).message); }
+    } else if (parts[3] || legacy) {
+      try {
+        const type = legacy ? legacy[1] as ResourceType : resource;
+        const id = decodeURIComponent(legacy ? legacy[2]! : parts[3]!);
+        const item = await api<ResourceRecord>(`/resources/${type}/${encodeURIComponent(id)}`);
+        if (!current()) return;
         setRecord(item);
-        setResourceView(type);
-        if (type === "settings") setView("global");
-        else if (type === "products" || type === "categories")
-          setView("products");
-        else {
+        if (legacy) {
           const pageRows = await loadResources("pages");
-          const slug =
-            type === "pages"
-              ? String(item.values.slug ?? "")
-              : String(
-                  pageRows.find((page) => page.id === String(item.values.page_id))
-                    ?.values.slug ?? "home",
-                );
-          setView(slug === "products" ? "products" : slug === "about" ? "about" : "home");
+          if (!current()) return;
+          const slug = type === "pages" ? item.values.slug : pageRows.find((page) => page.id === String(item.values.page_id))?.values.slug;
+          const owner: View = type === "settings" ? "global" : type === "products" || type === "categories" ? "products" : slug === "about" ? "about" : slug === "products" ? "products" : "home";
+          setView(owner);
+          setResourceView(type);
+          window.history.replaceState(null, "", `/admin/${owner}/${type}/${encodeURIComponent(id)}`);
         }
-      })
-      .catch((e) => {
-        if (active) setError((e as Error).message);
-      });
-    return () => {
-      active = false;
-    };
-  }, [user]);
+      } catch (e) { if (current()) setRouteError((e as Error).message); }
+    }
+    if (parts.length === 1 && !legacy) window.history.replaceState(null, "", "/admin/overview");
+  });
+  const handleHistory = useEffectEvent(() => {
+    if (document.querySelector(".editor") && !window.confirm("返回其他页面将离开当前编辑区域，请确认未保存的输入可以丢弃。")) {
+      writeAddress(view, resourceView, record?.id || "", true);
+      return;
+    }
+    void restoreAddress();
+  });
+  useEffect(() => {
+    queueMicrotask(() => { void restoreAddress(); });
+    const pop = () => handleHistory();
+    window.addEventListener("popstate", pop);
+    return () => window.removeEventListener("popstate", pop);
+  }, [user?.id, user?.mustChange]);
   const handleError = (e: unknown) => {
     if (e instanceof ApiError && e.status === 401) setUser(null);
     setError((e as Error).message);
@@ -186,7 +240,7 @@ function Application() {
         if (ticket === refreshTicket.current) setOverview(data);
       } else if (target !== "personal") {
         const [mediaRows, categoryRows, pageRows] = await Promise.all([
-          loadResources("media"),
+          Promise.resolve([] as ResourceRecord[]),
           loadResources("categories"),
           loadResources("pages"),
         ]);
@@ -209,7 +263,7 @@ function Application() {
     setError("");
     try {
       const [mediaRows, categoryRows, pageRows] = await Promise.all([
-        loadResources("media"),
+        Promise.resolve([] as ResourceRecord[]),
         loadResources("categories"),
         loadResources("pages"),
       ]);
@@ -218,6 +272,7 @@ function Application() {
       setCategories(categoryRows);
       setPages(pageRows);
       setCreating(true);
+      writeAddress(view, resourceView, "new");
     } catch (e) {
       if (ticket === refreshTicket.current) handleError(e);
     } finally {
@@ -229,8 +284,17 @@ function Application() {
     queueMicrotask(() => refreshView());
   }, [view, resourceView, user?.id, user?.mustChange, deleted]);
   const open = async (type: ResourceType, id: string) => {
+    const ticket = ++addressTicket.current;
     try {
-      setRecord(await api(`/resources/${type}/${encodeURIComponent(id)}`));
+      const item = await api<ResourceRecord>(`/resources/${type}/${encodeURIComponent(id)}`);
+      const pageRows = pages.length ? pages : await loadResources("pages");
+      const slug = type === "pages" ? item.values.slug : pageRows.find((page) => page.id === String(item.values.page_id))?.values.slug;
+      if (ticket !== addressTicket.current) return;
+      const target: View = type === "settings" ? "global" : type === "products" || type === "categories" ? "products" : slug === "about" ? "about" : slug === "products" ? "products" : "home";
+      setRecord(item);
+      setResourceView(type);
+      setView(target);
+      writeAddress(target, type, id);
     } catch (e) {
       handleError(e);
     }
@@ -242,6 +306,10 @@ function Application() {
       setFilter("");
       if (DEFAULT_RESOURCE[target]) setResourceView(DEFAULT_RESOURCE[target]!);
       setView(target);
+      setCreating(false);
+      setDeleted(false);
+      setListPage(1);
+      writeAddress(target, DEFAULT_RESOURCE[target] || "settings");
     };
     if (record)
       modal.confirm({
@@ -269,6 +337,10 @@ function Application() {
     setFilter("");
     setDeleted(false);
     setResourceView(target);
+    ++addressTicket.current;
+    setRouteError("");
+    setListPage(1);
+    window.history.pushState(null, "", `/admin/${view}/${target}`);
   };
   const remove = (item: ResourceRecord) =>
     modal.confirm({
@@ -290,6 +362,11 @@ function Application() {
         }
       },
     });
+  const syncListAddress = useEffectEvent(() => {
+    if (user && !record && !creating && window.location.pathname.split("/").filter(Boolean).length <= 3)
+      writeAddress(view, resourceView, "", true);
+  });
+  useEffect(() => { queueMicrotask(() => syncListAddress()); }, [query, filter, deleted, listPage, pageSize]);
   const exactId = items.some(
     (item) => item.type === resourceView && item.id === query.trim(),
   );
@@ -312,16 +389,14 @@ function Application() {
         String(item.values.category_id ?? item.values.page_id) === filter),
   );
   return (
-    <div className="admin-shell" style={{ height: Math.ceil(height * scale) }}>
+    <div className="admin-shell">
       <div
         ref={stageRef}
         className="admin-stage"
-        style={{ width: DESIGN_WIDTH, transform: `scale(${scale})` }}
+        style={{ width: DESIGN_WIDTH }}
       >
         {!ready ? (
-          <div className="loading-page">
-            <Spin size="large" />
-          </div>
+          <LoadingState />
         ) : !user ? (
           <Login onLogin={setUser} error={error} />
         ) : user.mustChange ? (
@@ -388,13 +463,13 @@ function Application() {
                 </Space>
               </header>
               <main className="admin-main">
-                {error && (
+                {(error || routeError) && (
                   <Alert
                     type="error"
                     showIcon
                     closable
-                    title={error}
-                    onClose={() => setError("")}
+                    title={routeError || error}
+                    onClose={() => { setError(""); setRouteError(""); }}
                   />
                 )}
                 {record ? (
@@ -416,6 +491,7 @@ function Application() {
                     }}
                     onClose={() => {
                       setRecord(null);
+                      writeAddress();
                       void refresh();
                     }}
                   />
@@ -611,7 +687,9 @@ function Application() {
                           loading={busy}
                           dataSource={filtered}
                           pagination={{
-                            pageSize: 12,
+                            current: listPage,
+                            pageSize,
+                            onChange: (page, size) => { setListPage(page); setPageSize(size); },
                             showSizeChanger: true,
                             showTotal: (total) => `共 ${total} 条`,
                           }}
@@ -705,7 +783,7 @@ function Application() {
                 ...current.filter((item) => item.id !== uploaded.id),
               ])
             }
-            onClose={() => setCreating(false)}
+            onClose={() => { setCreating(false); writeAddress(); }}
             onCreated={(item) => {
               setCreating(false);
               void refresh();
@@ -961,7 +1039,6 @@ function PasswordChange({ onChanged }: { onChanged: (user: User) => void }) {
 function CreateDialog({
   type,
   categories,
-  media,
   pages,
   pageId,
   onMediaUploaded,
@@ -979,6 +1056,7 @@ function CreateDialog({
 }) {
   const [form] = Form.useForm();
   const [busy, setBusy] = useState(false);
+  const uploadedMedia = Form.useWatch("media", form);
   const [customSectionType, setCustomSectionType] = useState(false);
   const { message } = App.useApp();
   const uploadImage = (file: File) => {
@@ -987,6 +1065,8 @@ function CreateDialog({
       try {
         const body = new FormData();
         body.set("file", file);
+        body.set("ownerType", type);
+        body.set("fieldKey", type === "products" ? "primary_media_id" : "media_id");
         body.set("operationId", crypto.randomUUID());
         const uploaded = await api<ResourceRecord>(
           "/media/uploads",
@@ -1166,15 +1246,9 @@ function CreateDialog({
               noStyle
               rules={[{ required: type === "products" }]}
             >
-              <Select
-                aria-label="图片"
-                showSearch
-                optionFilterProp="label"
-                allowClear
-                style={{ minWidth: 250 }}
-                options={media.map((m) => ({ value: m.id, label: m.title }))}
-              />
+              <Input aria-label="图片" readOnly style={{ display: "none" }} />
             </Form.Item>
+            <span>{uploadedMedia ? "已上传当前图片" : "请在此上传图片"}</span>
             <Upload
               accept=".png,.jpg,.jpeg,.webp"
               showUploadList={false}
@@ -1220,9 +1294,7 @@ export default function AdminApplication() { return (
     <App>
       <Suspense
         fallback={
-          <div className="loading-page">
-            <Spin />
-          </div>
+          <LoadingState standalone />
         }
       >
         <Application />
@@ -1230,3 +1302,17 @@ export default function AdminApplication() { return (
     </App>
   </ConfigProvider>
 ); }
+
+function LoadingState({ standalone = false }: { standalone?: boolean }) {
+  return (
+    <div className={standalone ? "loading-page loading-standalone" : "loading-page"} role="status" aria-live="polite">
+      <div className="loading-card">
+        <span className="eyebrow">AEVORIO / 内容管理</span>
+        <Spin size="large" />
+        <strong>正在准备管理工作台</strong>
+        <p>页面内容加载中，请稍候。</p>
+        <div className="loading-lines" aria-hidden="true"><i /><i /><i /></div>
+      </div>
+    </div>
+  );
+}

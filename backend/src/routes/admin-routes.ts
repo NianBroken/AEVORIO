@@ -45,7 +45,7 @@ const upload = multer({
 // 管理路由按资源类型复用业务服务，任何管理数据均在服务器端验证登录状态。
 export function createAdminRouter(database: Pool, mediaRoot: string): Router {
   const router = Router();
-  const resources = new ResourceService(database);
+  const resources = new ResourceService(database, mediaRoot);
   const media = new MediaService(resources, mediaRoot);
   router.use(sessionMiddleware(database));
   router.use((_req, res, next) => {
@@ -249,6 +249,7 @@ export function createAdminRouter(database: Pool, mediaRoot: string): Router {
     ),
   );
   router.get("/resources/:type", async (req, res) => {
+    if (req.params.type === "media") throw new ManagementError(404, 1002, "媒体仅能在所属内容中查看。");
     const query = z
       .object({
         q: z.string().max(120).optional(),
@@ -275,7 +276,8 @@ export function createAdminRouter(database: Pool, mediaRoot: string): Router {
   router.get("/resources/:type/:id", async (req, res) => {
     const type = resourceType(req.params.type);
     const item = await resources.get(type, String(req.params.id));
-    if (type === "media" || type === "categories")
+    if (type === "media") throw new ManagementError(404, 1002, "媒体仅能在所属内容中查看。");
+    if (type === "categories")
       item.references = await resources.references(item.id);
     sendSuccess(
       res,
@@ -285,6 +287,7 @@ export function createAdminRouter(database: Pool, mediaRoot: string): Router {
     );
   });
   router.patch("/resources/:type/:id", async (req, res) => {
+    if (req.params.type === "media") throw new ManagementError(400, 1001, "请在所属内容中上传替换图片。");
     const body = editSchema.parse(req.body);
     const item = await resources.save(
       resourceType(req.params.type),
@@ -384,27 +387,24 @@ export function createAdminRouter(database: Pool, mediaRoot: string): Router {
     const body = z
       .object({
         operationId: z.string().uuid(),
+        ownerType: z.enum(["settings", "pages", "sections", "products", "categories"]).optional(),
+        ownerId: z.string().max(96).optional(),
+        fieldKey: z.string().max(240).optional(),
         replaceId: z.string().max(96).optional(),
         version: z.coerce.number().int().positive().optional(),
       })
       .strict()
       .parse(req.body);
-    if (body.replaceId && !body.version)
-      throw new ManagementError(400, 1001, "替换图片必须提供当前资源版本。");
-    sendSuccess(
-      res,
-      res.locals.requestId,
-      body.replaceId
-        ? "图片已替换并立即发布，全部已声明引用将在刷新后读取新版本。"
-        : "图片文件已保存，可以选择该图片关联到页面或产品。",
-      await media.upload(
-        req.file,
-        context(req, res, body.operationId),
-        body.replaceId
-          ? { id: body.replaceId, version: body.version! }
-          : undefined,
-      ),
-    );
+    if (body.replaceId) throw new ManagementError(400, 1001, "请上传独立图片并在当前字段保存。");
+    if (!body.ownerType || !body.fieldKey) throw new ManagementError(400, 1001, "上传必须指定当前使用位置。");
+    if (body.ownerId) {
+      const target = await resources.get(body.ownerType, body.ownerId);
+      if (!target.fields.some(field => field.key === body.fieldKey && (["image", "icon"].includes(field.kind) || field.key === "gallery_json")))
+        throw new ManagementError(400, 1001, "当前字段不支持媒体上传。");
+    }
+    const uploaded = await media.upload(req.file, context(req, res, body.operationId));
+    await database.execute("UPDATE media_ownership SET owner_type=?,owner_id=?,field_key=? WHERE media_id=? AND owner_type='upload' AND owner_id=?", [body.ownerId ? body.ownerType : "upload", body.ownerId ?? context(req, res, body.operationId).actorId, body.ownerId ? body.fieldKey : `${body.ownerType}:${body.fieldKey}`, uploaded.id, context(req, res, body.operationId).actorId]);
+    sendSuccess(res, res.locals.requestId, "图片已上传到当前使用位置。", uploaded);
   });
   router.use((_req, _res, next) =>
     next(new ManagementError(404, 1002, "未找到指定管理接口。")),

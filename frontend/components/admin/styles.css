@@ -26,16 +26,19 @@ a {
   text-decoration: none;
 }
 .admin-shell {
+  container-type: inline-size;
   position: relative;
   width: 100%;
 }
 .admin-stage {
-  position: absolute;
+  transform: translateZ(0);
+  zoom: var(--canvas-scale, calc(100cqw / 1440px));
+  position: relative;
   top: 0;
   left: 0;
   transform-origin: top left;
   background: #f3f5f1;
-  min-height: 900px;
+  min-height: var(--scaled-viewport-height, 900px);
   display: flex;
   align-items: stretch;
 }
@@ -137,7 +140,7 @@ a {
 }
 .admin-workspace {
   width: 1214px;
-  min-height: 900px;
+  min-height: var(--scaled-viewport-height, 900px);
   display: flex;
   flex-direction: column;
 }
@@ -573,7 +576,7 @@ code {
 }
 .login-page {
   width: 1440px;
-  min-height: 900px;
+  min-height: var(--scaled-viewport-height, 900px);
   display: grid;
   grid-template-columns: 1fr 1fr;
   background: #fafbf8;
@@ -636,7 +639,7 @@ code {
 }
 .password-page {
   width: 1440px;
-  min-height: 900px;
+  min-height: var(--scaled-viewport-height, 900px);
   display: grid;
   place-items: center;
 }
@@ -660,7 +663,7 @@ code {
 }
 .loading-page {
   width: 1440px;
-  height: 900px;
+  min-height: var(--scaled-viewport-height, 900px);
   display: grid;
   place-items: center;
 }
@@ -695,3 +698,26 @@ code {
 .ant-upload-wrapper {
   display: inline-block;
 }
+
+.loading-standalone {
+  width: 100%;
+  min-height: 100dvh;
+}
+.loading-card {
+  display: grid;
+  justify-items: center;
+  gap: 24px;
+  width: min(420px, 80%);
+  padding: 44px;
+  border: 1px solid #dfe5dc;
+  border-radius: 12px;
+  background: #fafbf8;
+  box-shadow: 0 12px 40px #26352f08;
+}
+.loading-card p { margin: 0; color: #718075; font-size: 13px; }
+.loading-lines { display: grid; gap: 10px; width: 100%; }
+.loading-lines i { height: 8px; background: #e7eee3; border-radius: 4px; animation: loading-pulse 1.5s ease-in-out infinite; }
+.loading-lines i:nth-child(2) { width: 80%; }
+.loading-lines i:nth-child(3) { width: 55%; }
+@keyframes loading-pulse { 50% { opacity: .4; } }
+@media (prefers-reduced-motion: reduce) { .loading-lines i { animation: none; } }
