@@ -1,4 +1,4 @@
-import { initializeOwnership, claimMedia, isolateRecordMedia, mediaFields } from "./media-ownership";
+import { initializeOwnership, claimMedia, mediaFields } from "./media-ownership";
 import { randomUUID, createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -6,7 +6,6 @@ import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
 import { ENTITIES, fieldsFor, sectionDefaults } from "./resource-definitions";
 import {
   PROTECTED_SECTION_TYPES,
-  REVISION_PAGE_SIZE,
 } from "../../../shared/content";
 import {
   getValue,
@@ -39,15 +38,12 @@ export interface EditRequest {
   changes: Values;
 }
 type Connection = Pool | PoolConnection;
-type RevisionSnapshot = ResourceRecord & {
-  mediaSnapshots?: Record<string, Values>;
-};
 const jsonParse = (value: unknown): JsonValue =>
   typeof value === "string" ? JSON.parse(value) : (value as JsonValue);
 
 // 统一资源服务协调权限之外的业务约束、事务、乐观并发、版本与引用关系。
 export class ResourceService {
-  public constructor(public readonly database: Pool, private readonly mediaRoot = path.resolve("storage/media")) {}
+  public constructor(public readonly database: Pool) {}
   public async list(
     type: ResourceType,
     query = "",
@@ -160,20 +156,6 @@ export class ResourceService {
     }
     return result;
   }
-  public async revisions(
-    type: ResourceType,
-    id: string,
-    page = 1,
-  ): Promise<RowDataPacket[]> {
-    const [rows] = await this.database.query<RowDataPacket[]>(
-      "SELECT r.id,r.version,r.snapshot_json,r.created_at,u.username FROM content_revisions r LEFT JOIN admin_users u ON u.id=r.actor_id WHERE resource_type=? AND resource_id=? ORDER BY r.id DESC LIMIT ? OFFSET ?",
-      [type, id, REVISION_PAGE_SIZE, (page - 1) * REVISION_PAGE_SIZE],
-    );
-    return rows.map((row) => ({
-      ...row,
-      snapshot_json: jsonParse(row.snapshot_json),
-    })) as RowDataPacket[];
-  }
   // 所有可改变页面有效性的操作先锁住页面行，避免跨对象并发绕过板块数量检查。
   public async save(
     type: ResourceType,
@@ -182,7 +164,6 @@ export class ResourceService {
     context: EditContext,
     action = "publish",
     deleted?: boolean,
-    pins?: Record<string, Values>,
   ): Promise<ResourceRecord> {
     await initializeOwnership(this.database);
     const db = await this.database.getConnection();
@@ -227,7 +208,7 @@ export class ResourceService {
         PROTECTED_SECTION_TYPES.has(String(old.values.section_type))
       )
         throw new ManagementError(400, 1001, "系统模块不能单独删除。");
-      let values = structuredClone(old.values);
+      const values = structuredClone(old.values);
       for (const key of Object.keys(request.changes))
         if (!old.fields.some((f) => f.key === key && !f.readonly))
           throw new ManagementError(
@@ -237,22 +218,11 @@ export class ResourceService {
           );
       for (const [key, value] of Object.entries(request.changes))
         setValue(values, key, value);
-      if (pins) {
-        await this.restoreReferences(db, values, pins);
-        values = await isolateRecordMedia(db, { ...old, values }, this.mediaRoot);
-      }
-      const validated = pins
-        ? Object.fromEntries(
-            old.fields
-              .filter((f) => !f.readonly)
-              .map((f) => [f.key, getValue(values, f.key) ?? null]),
-          )
-        : request.changes;
-      await this.validateChanges(type, old, validated, db);
+      await this.validateChanges(type, old, request.changes, db);
       if (type !== "media") await claimMedia(db, old, values, context.actorId);
       for (const key of ["media_id", "og_media_id"])
         if (values[key] === "") values[key] = null;
-      await this.record(db, old, context);
+
       const entity = ENTITIES[type];
       const columns = entity.columns as readonly string[];
       const assignments = columns.map(() => "??=?");
@@ -291,7 +261,7 @@ export class ResourceService {
           );
       }
       if (type === "categories" && deleted !== undefined)
-        await this.setCategorySectionsDeleted(db, id, deleted, context);
+        await this.setCategorySectionsDeleted(db, id, deleted);
       if (type === "media" && deleted) {
         if ((await this.references(id, db)).length)
           throw new ManagementError(
@@ -302,7 +272,7 @@ export class ResourceService {
       }
       await this.assertSiteIntegrity(db);
       const current = await this.get(type, id, db);
-      await this.record(db, current, context);
+
       await db.execute(
         "INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,operation_id,request_id) VALUES(?,?,?,?,?,?)",
         [
@@ -322,61 +292,6 @@ export class ResourceService {
     } finally {
       db.release();
     }
-  }
-  public async restore(
-    type: ResourceType,
-    id: string,
-    revisionId: number,
-    version: number,
-    context: EditContext,
-  ): Promise<ResourceRecord> {
-    const [rows] = await this.database.execute<RowDataPacket[]>(
-      "SELECT snapshot_json FROM content_revisions WHERE id=? AND resource_type=? AND resource_id=?",
-      [revisionId, type, id],
-    );
-    if (!rows[0])
-      throw new ManagementError(404, 1002, "历史版本不存在或不属于当前对象。");
-    const snapshot = jsonParse(
-      rows[0].snapshot_json,
-    ) as unknown as RevisionSnapshot;
-    const current = await this.get(type, id);
-    const changes: Values = {};
-    for (const field of current.fields)
-      if (!field.readonly) {
-        const value = getValue(snapshot.values, field.key);
-        if (value !== undefined) changes[field.key] = value;
-      }
-    // 媒体恢复只切换已校验并保留的文件版本，不接受外部路径。
-    if (type === "media")
-      return this.restoreMedia(id, snapshot, version, context);
-    return this.save(
-      type,
-      id,
-      { version, changes },
-      context,
-      "restore",
-      ["settings", "pages"].includes(type) ? undefined : snapshot.deleted,
-      snapshot.mediaSnapshots,
-    );
-  }
-  private async restoreMedia(
-    id: string,
-    snapshot: ResourceRecord,
-    version: number,
-    context: EditContext,
-  ): Promise<ResourceRecord> {
-    const hash = String(snapshot.values.sha256);
-    const [known] = await this.database.execute<RowDataPacket[]>(
-      "SELECT id FROM media_versions WHERE media_id=? AND sha256=?",
-      [id, hash],
-    );
-    if (!known.length)
-      throw new ManagementError(
-        409,
-        3005,
-        "历史媒体文件版本不存在，当前内容保持不变。",
-      );
-    return this.replaceMedia(id, snapshot.values, version, context, "restore");
   }
   public async replaceMedia(
     id: string,
@@ -422,7 +337,7 @@ export class ResourceService {
           relative_path: known.relative_path!,
         };
       }
-      await this.record(db, old, context);
+
       const keys = [
         "file_name",
         "relative_path",
@@ -444,7 +359,7 @@ export class ResourceService {
         `UPDATE media_assets SET ${keys.map(() => "??=?").join(",")},version=version+1,is_deleted=? WHERE id=?`,
         [
           ...keys.flatMap((k) => [k, values[k]]),
-          action === "restore" ? false : old.deleted,
+          old.deleted,
           id,
         ],
       );
@@ -453,7 +368,7 @@ export class ResourceService {
         [id, values.sha256!, JSON.stringify(values)],
       );
       const current = await this.get("media", id, db);
-      await this.record(db, current, context);
+
       await db.execute(
         "INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,operation_id,request_id) VALUES(?,?,?,?,?,?)",
         [
@@ -474,42 +389,10 @@ export class ResourceService {
       db.release();
     }
   }
-  private async record(
-    db: PoolConnection,
-    resource: ResourceRecord,
-    context: EditContext,
-  ): Promise<void> {
-    const snapshot: RevisionSnapshot = { ...resource, mediaSnapshots: {} };
-    const [media] = await db.query<RowDataPacket[]>(
-      "SELECT * FROM media_assets",
-    );
-    const serialized = JSON.stringify(resource.values);
-    for (const row of media)
-      if (
-        serialized.includes(`"${row.id}"`) ||
-        serialized.includes(`"media:${row.id}"`)
-      )
-        snapshot.mediaSnapshots![String(row.id)] = this.map(
-          "media",
-          row,
-        ).values;
-    await db.execute(
-      "INSERT IGNORE INTO content_revisions(resource_type,resource_id,version,snapshot_json,actor_id,operation_id) VALUES(?,?,?,?,?,?)",
-      [
-        resource.type,
-        resource.id,
-        resource.version,
-        JSON.stringify(snapshot),
-        context.actorId,
-        context.operationId,
-      ],
-    );
-  }
   private async setCategorySectionsDeleted(
     db: PoolConnection,
     categoryId: string,
     deleted: boolean,
-    context: EditContext,
   ): Promise<void> {
     const [rows] = await db.execute<RowDataPacket[]>(
       "SELECT * FROM page_sections WHERE section_type='product-matrix' AND category_id=? AND is_deleted<>?",
@@ -518,68 +401,12 @@ export class ResourceService {
     for (const row of rows) {
       const id = String(row.id);
       const current = this.map("sections", row);
-      await this.record(db, current, context);
+
       await db.execute(
         "UPDATE page_sections SET is_deleted=?,version=version+1 WHERE id=? AND version=?",
         [deleted, id, current.version],
       );
-      await this.record(db, await this.get("sections", id, db), context);
     }
-  }
-  // 历史图片按当前对象的字段归属恢复，其他对象的媒体保持不变。
-  private async restoreReferences(
-    db: PoolConnection,
-    values: Values,
-    pins: Record<string, Values>,
-  ): Promise<void> {
-    const replacements = new Map<string, string>();
-    for (const [id, metadata] of Object.entries(pins)) {
-      const current = await this.get("media", id, db);
-      if (!current.deleted && current.values.sha256 === metadata.sha256)
-        continue;
-      const [known] = await db.execute<RowDataPacket[]>(
-        "SELECT id FROM media_versions WHERE media_id=? AND sha256=?",
-        [id, metadata.sha256!],
-      );
-      if (!known.length)
-        throw new ManagementError(
-          409,
-          3005,
-          "历史图片文件版本缺失，恢复未发布。",
-        );
-      const copyId = randomUUID();
-      const columns = ENTITIES.media.columns;
-      const copy: Values = {
-        ...metadata,
-        resource_key: "恢复图片 / " + copyId,
-      };
-      await db.query(
-        `INSERT INTO media_assets(id,${columns.map(() => "??").join(",")}) VALUES(?,${columns.map(() => "?").join(",")})`,
-        [...columns, copyId, ...columns.map((k) => copy[k] ?? "")],
-      );
-      await db.execute(
-        "INSERT INTO media_versions(media_id,sha256,metadata_json) VALUES(?,?,?)",
-        [copyId, metadata.sha256!, JSON.stringify(copy)],
-      );
-      replacements.set(id, copyId);
-    }
-    const replace = (value: JsonValue): JsonValue => {
-      if (typeof value === "string")
-        return (
-          replacements.get(value) ??
-          (value.startsWith("media:") && replacements.has(value.slice(6))
-            ? "media:" + replacements.get(value.slice(6))
-            : value)
-        );
-      if (Array.isArray(value)) return value.map(replace);
-      if (value && typeof value === "object")
-        return Object.fromEntries(
-          Object.entries(value).map(([k, v]) => [k, replace(v)]),
-        );
-      return value;
-    };
-    for (const [key, value] of Object.entries(values))
-      values[key] = replace(value);
   }
   public async assertSiteIntegrity(db: Connection): Promise<void> {
     const [pages] = await db.query<
@@ -898,7 +725,7 @@ export class ResourceService {
       const record = await this.get(type, id ?? String(result.insertId), db);
       await claimMedia(db, record, record.values, context.actorId);
       await this.assertSiteIntegrity(db);
-      await this.record(db, record, context);
+
       await db.execute(
         "INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,operation_id,request_id) VALUES(?,?,?,?,?,?)",
         [

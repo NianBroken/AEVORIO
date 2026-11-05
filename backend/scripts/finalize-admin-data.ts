@@ -82,7 +82,7 @@ export async function finalizeAdminData(
       path.resolve("storage/media", path.basename(String(media.file_name))),
     );
     if (createHash("sha256").update(bytes).digest("hex") !== media.sha256)
-      throw new Error("媒体当前文件校验失败，历史版本未建立。");
+      throw new Error("媒体当前文件校验失败，文件版本未登记。");
     await db.execute(
       "INSERT IGNORE INTO media_versions(media_id,sha256,metadata_json) VALUES(?,?,?)",
       [media.id, media.sha256, JSON.stringify(media)],

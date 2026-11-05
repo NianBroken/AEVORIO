@@ -1,7 +1,9 @@
-import { FieldValuePreview, previewMedia } from "./VisualPreview";
+import { adminContainer } from "./admin-container";
+import { LoadingState } from "./LoadingState";
+import { FieldValuePreview } from "./VisualPreview";
 import { useEffect, useState } from "react";
-import { Alert, App, Button, Empty, Form, Modal, Space, Spin } from "antd";
-import { getValue, setValue, REVISION_PAGE_SIZE, type ResourceRecord, type Values, type JsonValue } from "../../../shared/content";
+import { Alert, App, Button, Form, Modal, Space } from "antd";
+import { getValue, setValue, type ResourceRecord, type Values, type JsonValue } from "../../../shared/content";
 import { GLOBAL_GROUPS, fieldsForGroup, type GlobalGroup } from "../../../shared/global-settings";
 import { createId } from "../../lib/create-id";
 import { api, ApiError } from "./api";
@@ -9,13 +11,11 @@ import { EditorField } from "./EditorField";
 import { useMediaUpload } from "./useMediaUpload";
 
 type Records = Record<string, ResourceRecord>;
-type Revision = { id: number; created_at: string; username: string; snapshot_json: ResourceRecord };
 type Conflict = { group: GlobalGroup; latest: ResourceRecord; values: Values };
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
-const modalContainer = () => document.querySelector<HTMLElement>(".admin-stage")!;
 
 // 分组共享发布基线，输入草稿独立合并，保存只提交当前分组的字段。
-export function GlobalSettings({ reloadToken, onDirtyChange }: { reloadToken: number; onDirtyChange: (dirty: boolean) => void }) {
+export function GlobalSettings({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => void }) {
   const [records, setRecords] = useState<Records>({});
   const [drafts, setDrafts] = useState<Record<string, Values>>({});
   const [media, setMedia] = useState<ResourceRecord[]>([]);
@@ -24,9 +24,7 @@ export function GlobalSettings({ reloadToken, onDirtyChange }: { reloadToken: nu
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [conflict, setConflict] = useState<Conflict | null>(null);
-  const [history, setHistory] = useState<{ group: GlobalGroup; rows: Revision[]; page: number; more: boolean } | null>(null);
-  const [historyBusy, setHistoryBusy] = useState(false);
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   useEffect(() => {
     let active = true;
     Promise.all(["company_name", "public_content"].map((id) => api<ResourceRecord>(`/resources/settings/${id}`)))
@@ -40,7 +38,7 @@ export function GlobalSettings({ reloadToken, onDirtyChange }: { reloadToken: nu
       .catch((failure: Error) => { if (active) setError(failure.message); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [reloadToken, attempt]);
+  }, [attempt]);
   const dirty = Object.values(records).some((record) => !same(record.values, drafts[record.id]));
   useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false); }, [dirty, onDirtyChange]);
   useEffect(() => {
@@ -92,21 +90,7 @@ export function GlobalSettings({ reloadToken, onDirtyChange }: { reloadToken: nu
       } else setError((failure as Error).message);
     } finally { setBusy(false); }
   };
-  const loadHistory = async (group: GlobalGroup, page = 1) => {
-    setHistoryBusy(true);
-    try {
-      const rows = await api<Revision[]>(`/revisions/settings/${group.recordId}?page=${page}`);
-      setHistory((current) => ({ group, rows: page === 1 ? rows : [...(current?.rows ?? []), ...rows], page, more: rows.length === REVISION_PAGE_SIZE }));
-    } catch (failure) { setError((failure as Error).message); }
-    finally { setHistoryBusy(false); }
-  };
-  const restore = (group: GlobalGroup, revision: Revision) => modal.confirm({
-    title: `恢复${group.label}`,
-    content: "只发布当前分组的历史内容，其他分组和未保存输入保持原样。历史中没有的字段保留当前值。",
-    okText: "恢复并发布", cancelText: "取消",
-    onOk: async () => { await save(group, revision.snapshot_json.values); },
-  });
-  if (loading) return <div className="global-settings-loading"><Spin tip="正在读取公共内容"><div /></Spin></div>;
+  if (loading) return <LoadingState variant="region" title="正在读取公共内容" />;
   if (!records.company_name || !records.public_content) return <Alert type="error" title={error || "公共内容读取失败"} action={<Button onClick={() => { setLoading(true); setAttempt((value) => value + 1); }}>重新读取</Button>} />;
   return <div className="global-settings">
     {error && <Alert type="error" showIcon title={error} closable onClose={() => setError("")} />}
@@ -117,7 +101,6 @@ export function GlobalSettings({ reloadToken, onDirtyChange }: { reloadToken: nu
       const changed = fields.some((field) => !same(getValue(record.values, field.key), getValue(drafts[record.id]!, field.key)));
       return <section className="panel global-settings-group" id={`global-${group.key}`} data-global-group={group.key} key={group.key}>
         <div className="global-group-heading"><h2>{group.label}</h2><Space>
-          <Button disabled={busy || historyBusy} onClick={() => void loadHistory(group)}>历史与恢复</Button>
           <Button aria-label="保存并发布" type="primary" disabled={busy || !changed} loading={busy && changed} onClick={() => void save(group)}>保存并发布</Button>
         </Space></div>
         <Form layout="vertical" className="global-group-fields">
@@ -127,17 +110,9 @@ export function GlobalSettings({ reloadToken, onDirtyChange }: { reloadToken: nu
         </Form>
       </section>;
     })}
-    <Modal getContainer={modalContainer} destroyOnHidden title="内容已由其他操作更新" open={Boolean(conflict)} onCancel={() => setConflict(null)} footer={conflict && <Space><Button disabled={busy} onClick={() => setConflict(null)}>保留输入继续编辑</Button><Button type="primary" loading={busy} onClick={() => void save(conflict.group, conflict.values, conflict.latest)}>以当前输入重新提交</Button></Space>}>
+    <Modal getContainer={adminContainer} destroyOnHidden title="内容已由其他操作更新" open={Boolean(conflict)} onCancel={() => setConflict(null)} footer={conflict && <Space><Button disabled={busy} onClick={() => setConflict(null)}>保留输入继续编辑</Button><Button type="primary" loading={busy} onClick={() => void save(conflict.group, conflict.values, conflict.latest)}>以当前输入重新提交</Button></Space>}>
       <p>请比较最新发布内容与当前输入，确认后再提交当前分组。</p>
       {conflict && fieldsForGroup(conflict.group, conflict.latest).filter((field) => !same(getValue(conflict.latest.values, field.key), getValue(conflict.values, field.key))).map((field) => <div className="preview-change" key={field.key}><strong>{field.label}</strong><p>最新发布：<FieldValuePreview field={field} values={conflict.latest.values} media={[...media, ...(conflict.latest.relatedMedia ?? [])]} /></p><p>当前输入：<FieldValuePreview field={field} values={conflict.values} media={media} /></p></div>)}
-    </Modal>
-    <Modal getContainer={modalContainer} destroyOnHidden title={history ? `${history.group.label}的历史内容` : "历史内容"} open={Boolean(history)} onCancel={() => setHistory(null)} footer={null} width={760}>
-      {history && (history.rows.length ? history.rows.map((revision) => <details className="global-history-item" key={revision.id}>
-        <summary>{new Date(revision.created_at).toLocaleString("zh-CN")} / {revision.username ?? "初始化"}</summary>
-        {fieldsForGroup(history.group, records[history.group.recordId]!).filter((field) => getValue(revision.snapshot_json.values, field.key) !== undefined).map((field) => <div className="preview-change" key={field.key}><strong>{field.label}</strong><p>当前发布：<FieldValuePreview field={field} values={records[history.group.recordId]!.values} media={media} /></p><p>历史内容：<FieldValuePreview field={field} values={revision.snapshot_json.values} media={previewMedia(revision.snapshot_json, media)} /></p></div>)}
-        <Button disabled={busy} onClick={() => restore(history.group, revision)}>恢复此组内容</Button>
-      </details>) : <Empty description="尚无历史修改" />)}
-      {history?.more && <Button loading={historyBusy} onClick={() => void loadHistory(history.group, history.page + 1)}>加载更早记录</Button>}
     </Modal>
   </div>;
 }

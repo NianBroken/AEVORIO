@@ -1,3 +1,5 @@
+import { LoadingState } from "./LoadingState";
+import { beginRequest } from "./request-activity";
 import { createContext, useContext, useEffect, useState, type ReactNode, type CSSProperties } from "react";
 import NextImage from "next/image";
 import { getValue, INITIAL_PUBLIC_CONTENT, type FieldDefinition, type ResourceRecord, type Values } from "../../../shared/content";
@@ -17,6 +19,7 @@ export function VisualPreviewProvider({ children }: { children: ReactNode }) {
       controller?.abort();
       controller = new AbortController();
       const request = controller;
+      const finish = beginRequest();
       fetch("/api/v1/site?page=home", { signal: request.signal }).then(async (response) => {
         if (!response.ok) throw new Error("预览内容读取失败，请刷新数据");
         const body = await response.json();
@@ -24,7 +27,7 @@ export function VisualPreviewProvider({ children }: { children: ReactNode }) {
         const data = body.Data as SitePayload;
         const image = data.page.sections.find((section) => section.media)?.media?.url ?? data.products.find((product) => product.media)?.media.url ?? "";
         if (!request.signal.aborted) setPreview({ content: data.settings.content ?? INITIAL_PUBLIC_CONTENT, image, error: image ? "" : "已发布内容中没有可用的示例图片" });
-      }).catch((error: Error) => { if (!request.signal.aborted) setPreview((current) => ({ ...current, error: error.message })); });
+      }).catch((error: Error) => { if (!request.signal.aborted) setPreview((current) => ({ ...current, error: error.message })); }).finally(finish);
     };
     load();
     window.addEventListener(CONTENT_PUBLISHED_EVENT, load);
@@ -39,23 +42,15 @@ const assetUrl = (id: string, media: ResourceRecord[]) => {
   return item?.values.file_name ? `/media/${item.values.file_name}` : "";
 };
 
-// 历史快照中的媒体元数据优先于当前媒体，确保比较展示历史原图。
-export function previewMedia(record: ResourceRecord, media: ResourceRecord[]) {
-  const snapshots = (record as ResourceRecord & { mediaSnapshots?: Record<string, Values> }).mediaSnapshots ?? {};
-  return [
-    ...Object.entries(snapshots).map(([id, values]): ResourceRecord => ({ id, type: "media", title: String(values.alt_text ?? "历史图片"), values, fields: [], references: [], version: 1, deleted: false })),
-    ...(record.relatedMedia ?? []), ...media,
-  ];
-}
-
 // 图片加载状态按地址隔离，失败时明确显示实际状态。
 export function MediaPreview({ src, alt, style }: { src: string; alt: string; style?: CSSProperties }) {
   return <MediaImage key={src} src={src} alt={alt} style={style} />;
 }
 function MediaImage({ src, alt, style }: { src: string; alt: string; style?: CSSProperties }) {
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   return src && !failed
-    ? <NextImage unoptimized src={src} alt={alt} width={160} height={100} className="visual-image" style={style} onError={() => setFailed(true)} />
+    ? <><span hidden={loaded}><LoadingState variant="compact" title="正在读取图片" /></span><NextImage unoptimized src={src} alt={alt} width={160} height={100} className="visual-image" style={style} onLoad={() => setLoaded(true)} onError={() => setFailed(true)} /></>
     : <span role="status" className="media-error">{src ? "图片读取失败，请替换图片" : "尚未设置图片"}</span>;
 }
 
@@ -83,7 +78,7 @@ export function VisualOption({ field, values, media, value }: Context & { value:
   return <span className={`visual-option visual-${field.kind === "icon" ? "icon" : key}`} data-visual-value={value}>{visual}<span>{VISUAL_LABELS[value] ?? (value.startsWith("media:") ? "上传图标" : value)}</span></span>;
 }
 
-// 修改预览、历史恢复与冲突比较使用同一资源展示规则。
+// 修改预览与冲突比较使用同一资源展示规则。
 export function FieldValuePreview({ field, values, media }: Context) {
   const value = getValue(values, field.key);
   if (field.kind === "image") return value ? <MediaPreview src={assetUrl(String(value), media)} alt={field.label} /> : <span>空</span>;

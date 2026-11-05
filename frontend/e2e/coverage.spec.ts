@@ -62,7 +62,6 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
         ![
           "admin_users",
           "admin_sessions",
-          "content_revisions",
           "audit_logs",
         ].includes(table)
       )
@@ -87,7 +86,7 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
       jsonStrings: true,
       connectionLimit: 6,
     });
-    const service = new ResourceService(database, path.join(directory, "media"));
+    const service = new ResourceService(database);
     const { cloneMedia } = backendRequire("./dist/backend/src/services/media-ownership.js") as typeof import("../../backend/src/services/media-ownership");
     const ownedImage = async (record: ResourceRecord, field: string, source: string) => {
       const connection = await database!.getConnection();
@@ -261,6 +260,7 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
                     ? "products"
                     : "home";
           await page.goto(origin + (slug === "home" ? "/" : "/" + slug));
+          await expect.poll(() => page.locator(".scaled-canvas-stage").evaluate((element) => element instanceof HTMLElement ? element.style.getPropertyValue("--canvas-scale") : "")).not.toBe("");
           if (type === "products")
             await page
               .locator(`[data-product-slug="${baseline.values.slug}"]`)
@@ -422,6 +422,7 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
               ["about", "unavailableAbout"],
             ]) {
               await page.goto(origin + (slug === "home" ? "/" : "/" + slug));
+          await expect.poll(() => page.locator(".scaled-canvas-stage").evaluate((element) => element instanceof HTMLElement ? element.style.getPropertyValue("--canvas-scale") : "")).not.toBe("");
               proof(
                 key!,
                 (await page.locator(".page-unavailable h1").innerText()) ===
@@ -447,17 +448,7 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
           const restore: Values = {};
           for (const key of Object.keys(changes))
             restore[key] = getValue(baseline.values, key) ?? null;
-          const history = await service.revisions(type, baseline.id);
-          const revision = history.find(
-            (r) => Number(r.version) === baseline.version,
-          )!;
-          await service.restore(
-            type,
-            baseline.id,
-            Number(revision.id),
-            published.version,
-            ctx(),
-          );
+          await service.save(type, baseline.id, { version: published.version, changes: restore }, ctx());
           if (auxiliary)
             await service.save(
               "sections",
@@ -503,6 +494,7 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
               : "products";
           try {
             await page.goto(origin + (slug === "home" ? "/" : "/" + slug));
+          await expect.poll(() => page.locator(".scaled-canvas-stage").evaluate((element) => element instanceof HTMLElement ? element.style.getPropertyValue("--canvas-scale") : "")).not.toBe("");
             if (field.key === "is_visible")
               passed =
                 (await page
@@ -525,7 +517,7 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
               if (type === "products") {
                 await page
                   .locator(`[data-product-slug="${baseline.values.slug}"]`)
-                  .click();
+                  .press("Enter");
                 passed = (
                   await page.locator(".product-dialog").innerText()
                 ).includes(allCategories.find((c) => c.id === value)!.title);
@@ -584,16 +576,7 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
                   );
             }
           } finally {
-            const revision = (await service.revisions(type, current.id)).find(
-              (r) => Number(r.version) === current.version,
-            )!;
-            await service.restore(
-              type,
-              current.id,
-              Number(revision.id),
-              changed.version,
-              ctx(),
-            );
+            await service.save(type, current.id, { version: changed.version, changes: { [field.key]: getValue(current.values, field.key) ?? null } }, ctx());
           }
           results.push({
             type,

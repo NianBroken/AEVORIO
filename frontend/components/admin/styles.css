@@ -552,27 +552,6 @@ code {
   flex: 1;
   min-width: 0;
 }
-.revision-row {
-  display: flex;
-  gap: 20px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 15px 0;
-  border-bottom: 1px solid #dfe5da;
-}
-.revision-row p {
-  font-size: 11px;
-  color: #85927b;
-}
-.revision-diff {
-  font-size: 11px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  max-height: 350px;
-  overflow-y: auto;
-  background: #f4f6ef;
-  padding: 14px;
-}
 .login-page {
   width: var(--canvas-width);
   min-height: var(--scaled-viewport-height, 900px);
@@ -660,12 +639,6 @@ code {
   padding: 12px;
   border: 0;
 }
-.loading-page {
-  width: var(--canvas-width);
-  min-height: var(--scaled-viewport-height, 900px);
-  display: grid;
-  place-items: center;
-}
 .ant-select {
   width: 100%;
 }
@@ -701,29 +674,6 @@ code {
   display: inline-block;
 }
 
-.loading-standalone {
-  width: 100%;
-  min-height: 100dvh;
-}
-.loading-card {
-  display: grid;
-  justify-items: center;
-  gap: 24px;
-  width: min(420px, 80%);
-  padding: 44px;
-  border: 1px solid #dfe5dc;
-  border-radius: 12px;
-  background: #fafbf8;
-  box-shadow: 0 12px 40px #26352f08;
-}
-.loading-card p { margin: 0; color: #718075; font-size: 13px; }
-.loading-lines { display: grid; gap: 10px; width: 100%; }
-.loading-lines i { height: 8px; background: #e7eee3; border-radius: 4px; animation: loading-pulse 1.5s ease-in-out infinite; }
-.loading-lines i:nth-child(2) { width: 80%; }
-.loading-lines i:nth-child(3) { width: 55%; }
-@keyframes loading-pulse { 50% { opacity: .4; } }
-@media (prefers-reduced-motion: reduce) { .loading-lines i { animation: none; } }
-
 .global-settings { display: grid; gap: 22px; min-width: 0; }
 .global-settings-group { min-width: 0; scroll-margin-top: 24px; }
 .global-group-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
@@ -731,12 +681,7 @@ code {
 .global-group-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 30px; }
 .global-group-fields .ant-form-item { min-width: 0; margin-bottom: 24px; }
 .global-field-wide { grid-column: 1 / -1; }
-.global-settings-loading { padding: 80px; }
-.global-history-item { padding: 16px 0; border-bottom: 1px solid #dfe5dc; }
-.global-history-item summary { cursor: pointer; margin-bottom: 16px; }
-.global-history-item .preview-change p { white-space: pre-wrap; overflow-wrap: anywhere; }
 
-.global-refresh { justify-content: flex-end; }
 .visual-select.ant-select { height: auto; min-height: 48px; }
 .visual-select .ant-select-content { min-width: 0; }
 .visual-option { display: inline-flex; align-items: center; gap: 12px; max-width: 100%; white-space: normal; vertical-align: middle; }

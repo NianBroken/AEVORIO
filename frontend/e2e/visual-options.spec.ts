@@ -35,7 +35,7 @@ for (const [name, engine] of Object.entries({ chromium, firefox, webkit })) {
       await page.goto("/admin/global/settings");
       await expect(page.getByLabel("网站名称", { exact: true })).toBeVisible({ timeout: 20000 });
       await expect(page.locator(".page-heading h1, .page-heading .eyebrow, .global-settings-links")).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "刷新数据", exact: true })).toBeVisible();
+      await expect(page.getByLabel("网站名称", { exact: true })).toBeVisible();
       const icons = page.locator(".icon-field .ant-select").first();
       await icons.click();
       const popup = page.locator(".ant-select-dropdown:visible");

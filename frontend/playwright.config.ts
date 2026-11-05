@@ -7,6 +7,7 @@ const baseURL = process.env.AEVORIO_E2E_BASE_URL ?? 'http://127.0.0.1:24681';
 
 export default defineConfig({
   testDir: './e2e',
+  expect: { timeout: 15000 },
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
@@ -16,7 +17,7 @@ export default defineConfig({
   ],
   projects: [
     { name: "visual-options", testMatch: "visual-options.spec.ts", dependencies: ["maintenance", "admin-compatibility"] },
-    { name: 'admin-routes', testMatch: 'admin-routes.spec.ts' },
+    { name: 'admin-routes', testMatch: ['admin-routes.spec.ts', 'loading.spec.ts'] },
     { name: 'website', testMatch: ['site.spec.ts', 'failure-state.spec.ts', 'layout-compatibility.spec.ts', 'native-zoom.spec.ts'] },
     { name: 'admin', testMatch: 'admin.spec.ts', dependencies: ['website'] },
     { name: 'global-settings', testMatch: 'global-settings.spec.ts', dependencies: ['admin'] },

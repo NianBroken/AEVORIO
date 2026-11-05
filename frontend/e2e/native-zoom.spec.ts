@@ -51,13 +51,14 @@ test("浏览器原生缩放保持完整画布", async ({ baseURL }) => {
           await page.getByRole("combobox", { name: "字体", exact: true }).click();
           await expect(page.locator(".ant-select-dropdown:visible")).toBeVisible();
           await page.keyboard.press("Escape");
-          await page.locator('[data-global-group="footer"]').getByRole("button", { name: "历史与恢复" }).click();
+          await page.getByLabel("网站名称", { exact: true }).fill("未发布的布局验收草稿");
+        await page.locator(".sidebar nav").getByRole("button", { name: "概览", exact: true }).click();
           const dialog = page.getByRole("dialog");
           await expect(dialog).toBeVisible();
           const bounds = await dialog.boundingBox();
           expect(bounds!.x).toBeGreaterThanOrEqual(-1);
           expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(size.client + 1);
-          await dialog.locator(".ant-modal-close").click();
+          await dialog.getByRole("button", { name: "继续编辑", exact: true }).click();
         }
         rows.push({ factor, address, ...size });
       }

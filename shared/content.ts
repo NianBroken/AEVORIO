@@ -2,10 +2,8 @@
 export type JsonValue =
   string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type Values = Record<string, JsonValue>;
-export const REVISION_PAGE_SIZE = 100;
 export const ACTION_NAMES: Record<string, string> = {
   publish: "保存发布",
-  restore: "历史恢复",
   create: "创建",
   delete: "可恢复删除",
   upload: "上传图片",

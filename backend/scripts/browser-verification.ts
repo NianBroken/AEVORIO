@@ -66,7 +66,7 @@ void (async () => {
           current.id,
           { version: current.version, changes: {} },
           context(),
-          "restore",
+          "publish",
           false,
         );
       await resources.save(
@@ -93,7 +93,7 @@ void (async () => {
     }
     if (process.argv.includes("--cleanup")) {
       await rm(CREDENTIAL_FILE, { force: true });
-      console.log("浏览器验收账户、会话和临时凭据已清理，验收历史保留。");
+      console.log("浏览器验收账户、会话和临时凭据已清理，操作审计保留。");
       return;
     }
     if (process.argv.includes("--cleanup-content")) {

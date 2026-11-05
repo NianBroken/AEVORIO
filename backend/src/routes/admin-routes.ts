@@ -45,7 +45,7 @@ const upload = multer({
 // 管理路由按资源类型复用业务服务，任何管理数据均在服务器端验证登录状态。
 export function createAdminRouter(database: Pool, mediaRoot: string): Router {
   const router = Router();
-  const resources = new ResourceService(database, mediaRoot);
+  const resources = new ResourceService(database);
   const media = new MediaService(resources, mediaRoot);
   router.use(sessionMiddleware(database));
   router.use((_req, res, next) => {
@@ -244,7 +244,7 @@ export function createAdminRouter(database: Pool, mediaRoot: string): Router {
     sendSuccess(
       res,
       res.locals.requestId,
-      "未引用文件清理完成，当前媒体和全部可恢复历史文件均已保留。",
+      "未引用文件清理完成，当前媒体、受保护删除记录和不可变文件版本均已保留。",
       await media.cleanup(),
     ),
   );
@@ -340,46 +340,6 @@ export function createAdminRouter(database: Pool, mediaRoot: string): Router {
         context(req, res, body.operationId),
         "delete",
         true,
-      ),
-    );
-  });
-  router.get("/revisions/:type/:id", async (req, res) =>
-    sendSuccess(
-      res,
-      res.locals.requestId,
-      "已读取当前对象的历史版本。",
-      await resources.revisions(
-        resourceType(req.params.type),
-        String(req.params.id),
-        z.coerce
-          .number()
-          .int()
-          .min(1)
-          .max(100000)
-          .default(1)
-          .parse(req.query.page),
-      ),
-    ),
-  );
-  router.post("/revisions/:type/:id/restore", async (req, res) => {
-    const body = z
-      .object({
-        revisionId: z.number().int().positive(),
-        version: z.number().int().positive(),
-        operationId: z.string().uuid(),
-      })
-      .strict()
-      .parse(req.body);
-    sendSuccess(
-      res,
-      res.locals.requestId,
-      "历史内容已恢复为新的发布版本，其他独立资源未修改。",
-      await resources.restore(
-        resourceType(req.params.type),
-        String(req.params.id),
-        body.revisionId,
-        body.version,
-        context(req, res, body.operationId),
       ),
     );
   });

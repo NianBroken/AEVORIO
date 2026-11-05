@@ -14,7 +14,7 @@ const context = () => ({
 });
 const mediaDirectory = path.resolve(__dirname, "../storage/media");
 
-// 本机维护与后台使用同一发布服务，统一执行版本、引用、历史和事务校验。
+// 本机维护与后台使用同一发布服务，统一执行版本、引用和事务校验。
 export async function updateCompanyName(
   database: Pool,
   name: string,
@@ -76,7 +76,7 @@ export async function replaceMediaImage(
       metadata,
       current.version,
       context(),
-      "restore",
+      "publish",
     );
     return String(restored.values.file_name);
   }
@@ -115,7 +115,7 @@ if (require.main === module)
         throw new Error(
           "命令格式：company 企业名称、product 产品标识 产品说明、image 资源名称 本地图片路径。",
         );
-      console.log("内容已通过统一服务保存并发布，历史记录可用于恢复。");
+      console.log("内容已通过统一服务保存并发布，当前内容已更新。");
     } finally {
       await closeDatabasePool();
     }

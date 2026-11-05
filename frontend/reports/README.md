@@ -6,9 +6,9 @@
 
 | 文件 | 核验内容 |
 | --- | --- |
-| browser-test-report.json | 完整 Chromium 回归，15 项全部通过 |
-| admin-browser-report.json | 后台发布、上传与替换、历史恢复、新建、隐藏、排序、删除和八种尺寸 |
-| resource-dom-coverage.json | 隔离环境中 1447 个可编辑字段的实际显示、持久化和恢复 |
+| browser-test-report.json | 完整浏览器回归，数量与结果以报告为准 |
+| admin-browser-report.json | 后台发布、上传与替换、新建、隐藏、排序、删除和八种尺寸 |
+| resource-dom-coverage.json | 隔离环境中全部可编辑字段的实际显示、持久化和恢复 |
 | browser-maintenance-report.json | 维护工具、产品文字、图片像素与版本地址、原内容恢复 |
 | layout-home.json、layout-products.json、layout-about.json | 三页八种窗口尺寸、画布比例、高度、五列产品和横向边界 |
 | frontend-build-verification.json | 前台类型检查、代码规范检查、正式构建的实际完成记录 |

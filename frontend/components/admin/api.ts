@@ -1,3 +1,4 @@
+import { beginRequest } from "./request-activity";
 import { CONTENT_PUBLISHED_EVENT } from "../../lib/visual-options";
 import type { ApiEnvelope } from "../../../shared/site";
 import type { ResourceRecord, ResourceType } from "../../../shared/content";
@@ -33,32 +34,37 @@ export async function api<T>(
   method = "GET",
   body?: unknown,
 ): Promise<T> {
-  const response = await fetch("/api/v1/admin" + path, {
-    method,
-    credentials: "same-origin",
-    headers: {
-      ...(body instanceof FormData
-        ? {}
-        : { "Content-Type": "application/json" }),
-      ...(method === "GET" ? {} : { "X-CSRF-Token": csrf }),
-    },
-    body:
-      body === undefined
-        ? undefined
-        : body instanceof FormData
-          ? body
-          : JSON.stringify(body),
-  });
-  const envelope = (await response.json()) as ApiEnvelope<T>;
-  if (!response.ok || envelope.Code !== 0)
-    throw new ApiError(
-      envelope.Messages || "管理请求未完成。",
-      response.status,
-    );
-  const data = envelope.Data;
-  if (data && typeof data === "object" && "csrfToken" in data)
-    csrf = String(data.csrfToken);
-  if (method !== "GET" && /^\/(resources|revisions)\//u.test(path))
-    window.dispatchEvent(new Event(CONTENT_PUBLISHED_EVENT));
-  return data as T;
+  const finish = beginRequest();
+  try {
+    const response = await fetch("/api/v1/admin" + path, {
+      method,
+      credentials: "same-origin",
+      headers: {
+        ...(body instanceof FormData
+          ? {}
+          : { "Content-Type": "application/json" }),
+        ...(method === "GET" ? {} : { "X-CSRF-Token": csrf }),
+      },
+      body:
+        body === undefined
+          ? undefined
+          : body instanceof FormData
+            ? body
+            : JSON.stringify(body),
+    });
+    const envelope = (await response.json()) as ApiEnvelope<T>;
+    if (!response.ok || envelope.Code !== 0)
+      throw new ApiError(
+        envelope.Messages || "管理请求未完成。",
+        response.status,
+      );
+    const data = envelope.Data;
+    if (data && typeof data === "object" && "csrfToken" in data)
+      csrf = String(data.csrfToken);
+    if (method !== "GET" && /^\/resources\//u.test(path))
+      window.dispatchEvent(new Event(CONTENT_PUBLISHED_EVENT));
+    return data as T;
+  } finally {
+    finish();
+  }
 }

@@ -36,7 +36,7 @@ const actor = { actorId: 'test-admin', requestId: randomUUID() };
 const operation = () => ({ ...actor, operationId: randomUUID() });
 const coverageResults: Array<Record<string, unknown>> = [];
 
-it('公开署名迁移只填充缺失值并保留主动清空和历史兼容', async () => {
+it('公开署名迁移只填充缺失值并保留主动清空', async () => {
   await database.execute("UPDATE site_settings SET setting_value=JSON_REMOVE(setting_value,'$.footerAttribution') WHERE setting_key='public_content'");
   await migratePublicContent(database);
   const inherited = await management.get('settings', 'public_content');
@@ -46,11 +46,7 @@ it('公开署名迁移只填充缺失值并保留主动清空和历史兼容', a
   const unchanged = await management.get('settings', 'public_content');
   expect(unchanged.version).toBe(cleared.version);
   expect(getValue(unchanged.values, 'setting_value.footerAttribution')).toBe('');
-  await database.execute("INSERT INTO content_revisions(resource_type,resource_id,version,snapshot_json,actor_id,operation_id) VALUES('settings','public_content',?,?,?,?)", [cleared.version + 1000000, JSON.stringify({ ...cleared, values: { setting_value: { brandTagline: '旧历史兼容验证' } } }), 'test-admin', randomUUID()]);
-  const [rows] = await database.query<mysql.RowDataPacket[]>("SELECT id FROM content_revisions WHERE resource_type='settings' AND resource_id='public_content' ORDER BY id DESC LIMIT 1");
-  const restored = await management.restore('settings', 'public_content', Number(rows[0]!.id), unchanged.version, operation());
-  expect(getValue(restored.values, 'setting_value.footerAttribution')).toBe('');
-  expect(getValue(restored.values, 'setting_value.brandTagline')).toBe('旧历史兼容验证');
+
 });
 
 // 测试复制真实数据到独立 MySQL 数据库，正式网站和图片始终不受测试写入影响。
@@ -81,7 +77,6 @@ beforeAll(async () => {
       ![
         'admin_sessions',
         'audit_logs',
-        'content_revisions',
         'admin_users',
       ].includes(table)
     )
@@ -107,7 +102,7 @@ beforeAll(async () => {
     ['test-admin', 'integration', await hashPassword(password)],
   );
   await cp(path.resolve('storage/media'), mediaRoot, { recursive: true });
-  management = new ResourceService(database, mediaRoot);
+  management = new ResourceService(database);
   app = createApp({ database, mediaDirectory: mediaRoot });
   agent = request.agent(app);
   csrf = (await agent.get('/api/v1/admin/auth/session')).body.Data.csrfToken;
@@ -296,17 +291,7 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
       name: '过期版本不能覆盖',
     });
     expect(conflict.status).toBe(409);
-    const history = await management.revisions('products', product.id);
-    const original = history.find(
-      (h) => Number(h.version) === product.version,
-    )!;
-    const restored = await management.restore(
-      'products',
-      product.id,
-      Number(original.id),
-      changed.body.Data.version,
-      operation(),
-    );
+    const restored = await management.save('products', product.id, { version: changed.body.Data.version, changes: { name: product.values.name! } }, operation());
     expect(restored.values.name).toBe(product.values.name);
   });
   it('重复操作标识只产生一次发布', async () => {
@@ -475,7 +460,7 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
       expect(response.body.Messages).toMatch(/[\u4e00-\u9fff]/u);
     }
   });
-  it('真实图片上传、共享替换、历史恢复和引用保护', async () => {
+  it('真实图片上传、共享替换和引用保护', async () => {
     const original = (await management.list('media'))[0]!;
     const data = await sharp({
       create: { width: 320, height: 240, channels: 3, background: '#345678' },
@@ -603,7 +588,7 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
       category.id,
       { version: deletedCategory.version, changes: {} },
       operation(),
-      'restore',
+      'publish',
       false,
     );
     expect(
@@ -648,61 +633,14 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
     });
     expect(again.version).toBe(changed.version);
     await media.cleanup();
-    await media.verifyHistoricalFiles();
-  });
-  it('恢复产品历史图片只改变当前产品，保留共享资源的当前版本', async () => {
-    const product = (await management.list('products'))[0]!;
-    const originalMedia = await management.get(
-      'media',
-      String(product.values.primary_media_id),
-    );
-    const edited = await management.save(
-      'products',
-      product.id,
-      { version: product.version, changes: { name: '历史图片验证' } },
-      operation(),
-    );
-    const bytes = await sharp({
-      create: { width: 240, height: 240, channels: 3, background: '#563412' },
-    })
-      .png()
-      .toBuffer();
-    const changedMedia = await new MediaService(management, mediaRoot).upload(
-      {
-        buffer: bytes,
-        size: bytes.length,
-        originalname: 'history.png',
-        mimetype: 'image/png',
-      } as Express.Multer.File,
-      operation(),
-      { id: originalMedia.id, version: originalMedia.version },
-    );
-    const revision = (await management.revisions('products', product.id)).find(
-      (r) => Number(r.version) === product.version,
-    )!;
-    const restored = await management.restore(
-      'products',
-      product.id,
-      Number(revision.id),
-      edited.version,
-      operation(),
-    );
-    const pinned = await management.get(
-      'media',
-      String(restored.values.primary_media_id),
-    );
-    expect(pinned.values.sha256).toBe(originalMedia.values.sha256);
-    expect(pinned.id).not.toBe(originalMedia.id);
-    expect(
-      (await management.get('media', originalMedia.id)).values.sha256,
-    ).toBe(changedMedia.values.sha256);
+    await media.verifyFiles();
   });
   it('数据库提交失败会回滚业务、版本和操作记录', async () => {
     const listed = (await management.list('products'))[1]!;
     const item = await management.get('products', listed.id);
     const ctx = operation();
     await database.query(
-      `CREATE TRIGGER test_revision_failure BEFORE INSERT ON content_revisions FOR EACH ROW BEGIN IF NEW.operation_id='${ctx.operationId}' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='test transaction rollback'; END IF; END`,
+      `CREATE TRIGGER test_audit_failure BEFORE INSERT ON audit_logs FOR EACH ROW BEGIN IF NEW.operation_id='${ctx.operationId}' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='test transaction rollback'; END IF; END`,
     );
     try {
       await expect(
@@ -720,35 +658,7 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
       );
       expect(logs).toHaveLength(0);
     } finally {
-      await database.query('DROP TRIGGER test_revision_failure');
-    }
-  });
-  it('全站配置与页面历史可恢复，固定对象不执行删除状态更新', async () => {
-    for (const [type, id, key] of [
-      ['settings', 'company_name', 'setting_value'],
-      ['pages', '1', 'meta_description'],
-    ] as const) {
-      const baseline = await management.get(type, id);
-      const changed = await management.save(
-        type,
-        id,
-        {
-          version: baseline.version,
-          changes: { [key]: '固定对象历史恢复验证' },
-        },
-        operation(),
-      );
-      const revision = (await management.revisions(type, id)).find(
-        (r) => Number(r.version) === baseline.version,
-      )!;
-      const restored = await management.restore(
-        type,
-        id,
-        Number(revision.id),
-        changed.version,
-        operation(),
-      );
-      expect(restored.values[key]).toBe(baseline.values[key]);
+      await database.query('DROP TRIGGER test_audit_failure');
     }
   });
   it('文件落盘失败和非法图库引用均保留已发布内容', async () => {
@@ -790,12 +700,6 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
       ).status,
     ).toBe(403);
   });
-  it('历史分页保留全部旧版本并支持恢复',async()=>{
-    const baseline=(await management.list('products'))[2]!;let current=baseline;
-    for(let i=0;i<102;i++)current=await management.save('products',current.id,{version:current.version,changes:{subtitle:'历史分页验证'+i}},operation());
-    const first=await management.revisions('products',current.id);const second=await management.revisions('products',current.id,2);expect(first).toHaveLength(100);expect(second.length).toBeGreaterThan(0);expect(new Set([...first,...second].map(r=>r.id)).size).toBe(first.length+second.length);
-    const revision=[...first,...second].find(r=>Number(r.version)===baseline.version)!;expect(revision).toBeTruthy();const restored=await management.restore('products',current.id,Number(revision.id),current.version,operation());expect(restored.values.subtitle).toBe(baseline.values.subtitle);
-  }, 30000);
   it('首次改密、旧会话失效、过期会话和登录限速均由服务端执行', async () => {
     const username = 'password-flow';
     const initial = randomUUID() + randomUUID();
@@ -910,7 +814,7 @@ describe('真实 MySQL 管理接口与发布恢复', () => {
 
 
 describe('媒体独立归属', () => {
-  it('上传、创建、跨位置拒绝和历史恢复保持独立归属', async () => {
+  it('上传、创建、跨位置拒绝和重新绑定保持独立归属', async () => {
     const file = { buffer: await sharp({ create: { width: 16, height: 16, channels: 3, background: "#376d58" } }).png().toBuffer(), originalname: "独立图片.png", mimetype: "image/png", size: 100 } as Express.Multer.File;
     const uploads = new MediaService(management, mediaRoot);
     const first = await uploads.upload(file, operation());
@@ -922,9 +826,7 @@ describe('媒体独立归属', () => {
     await expect(management.save("products", product.id, { version: product.version, changes: { primary_media_id: first.id } }, operation())).rejects.toThrow("属于其他使用位置");
     await expect(management.save("products", created.id, { version: created.version, changes: { gallery_json: [first.id] } }, operation())).rejects.toThrow("多个位置");
     const published = await management.save("products", created.id, { version: created.version, changes: { primary_media_id: second.id } }, operation());
-    const revisions = await management.revisions("products", created.id);
-    const initial = revisions.find(row => (row.snapshot_json as ResourceRecord).values.primary_media_id === first.id)!;
-    const restored = await management.restore("products", created.id, Number(initial.id), published.version, operation());
+    const restored = await management.save("products", created.id, { version: published.version, changes: { primary_media_id: first.id } }, operation());
     expect(restored.values.primary_media_id).toBe(first.id);
     expect((await management.get("products", product.id)).values.primary_media_id).toBe(product.values.primary_media_id);
     await database.execute('INSERT INTO admin_users(id,username,password_hash,must_change_password) VALUES(?,?,?,0)', ['media-test-admin', 'media-test', await hashPassword(password)]);
@@ -950,24 +852,24 @@ describe('媒体独立归属', () => {
 
 
 describe('上传暂存回收', () => {
-  it('仅回收超过24小时且没有业务和历史引用的未认领上传', async () => {
+  it('仅回收超过24小时且没有业务引用的未认领上传', async () => {
     const buffer = await sharp({ create: { width: 8, height: 8, channels: 3, background: "#345678" } }).png().toBuffer();
     const service = new MediaService(management, mediaRoot);
     const file = { buffer, size: buffer.length, originalname: "暂存.png", mimetype: "image/png" } as Express.Multer.File;
     const expired = await service.upload(file, operation());
     const fresh = await service.upload(file, operation());
-    const history = await service.upload(file, operation());
+    const protectedMedia = await service.upload(file, operation());
     const product = (await management.list("products"))[0]!;
-    const published = await management.save("products", product.id, { version: product.version, changes: { primary_media_id: history.id } }, operation());
-    await management.save("products", product.id, { version: published.version, changes: { primary_media_id: product.values.primary_media_id! } }, operation());
-    await database.execute("UPDATE media_ownership SET claimed=0 WHERE media_id=?", [history.id]);
-    await database.execute("UPDATE media_assets SET created_at=TIMESTAMPADD(HOUR,-25,CURRENT_TIMESTAMP) WHERE id IN (?,?)", [expired.id, history.id]);
+    const published = await management.save("products", product.id, { version: product.version, changes: { primary_media_id: protectedMedia.id } }, operation());
+    await management.save("products", product.id, { version: published.version, changes: {} }, operation(), "delete", true);
+    await database.execute("UPDATE media_ownership SET claimed=0 WHERE media_id=?", [protectedMedia.id]);
+    await database.execute("UPDATE media_assets SET created_at=TIMESTAMPADD(HOUR,-25,CURRENT_TIMESTAMP) WHERE id IN (?,?)", [expired.id, protectedMedia.id]);
     const result = await service.cleanup();
     expect(result.removed).toContain(expired.values.file_name);
     await expect(management.get("media", expired.id)).rejects.toThrow("未找到");
     expect((await management.get("media", fresh.id)).id).toBe(fresh.id);
-    expect((await management.get("media", history.id)).id).toBe(history.id);
-    await service.verifyHistoricalFiles();
+    expect((await management.get("media", protectedMedia.id)).id).toBe(protectedMedia.id);
+    await service.verifyFiles();
   });
 });
 
@@ -985,7 +887,7 @@ describe('默认数据库媒体归属', () => {
       await cp(path.resolve("storage/media"), root, { recursive: true });
       expect((await isolateAllMedia(pool, root)).length).toBeGreaterThan(0);
       expect(await isolateAllMedia(pool, root)).toEqual([]);
-      const service = new ResourceService(pool, root);
+      const service = new ResourceService(pool);
       const ids = new Set<string>();
       for (const type of ["settings", "pages", "sections", "products", "categories"] as const)
         for (const record of await service.list(type, "", true))
@@ -1000,4 +902,23 @@ describe('默认数据库媒体归属', () => {
       await admin.end();
     }
   }, 60000);
+});
+
+
+it("业务历史接口不可访问，迁移清理旧表且可以重复执行", async () => {
+  await database.execute("INSERT INTO admin_users(id,username,password_hash,must_change_password) VALUES(?,?,?,0)", ["removed-feature-admin", "removed-feature-test", await hashPassword(password)]);
+  const local = request.agent(createApp({ database, mediaDirectory: mediaRoot }));
+  const token = (await local.get("/api/v1/admin/auth/session")).body.Data.csrfToken;
+  const login = await local.post("/api/v1/admin/auth/login").set("Origin", origin).set("X-CSRF-Token", token).send({ username: "removed-feature-test", password });
+  expect(login.status).toBe(200);
+  expect((await local.get("/api/v1/admin/revisions/products/removed")).status).toBe(404);
+  expect((await local.post("/api/v1/admin/revisions/products/removed/restore").set("Origin", origin).set("X-CSRF-Token", login.body.Data.csrfToken).send({})).status).toBe(404);
+  const { migrateAdmin } = await import("../scripts/migrate-admin");
+  const connection = await owner.changeUser({ database: testName }).then(() => owner);
+  await connection.query("CREATE TABLE content_revisions(id INT PRIMARY KEY)");
+  await connection.query("INSERT INTO content_revisions VALUES(1)");
+  await migrateAdmin(connection);
+  await migrateAdmin(connection);
+  const [tables] = await connection.query<mysql.RowDataPacket[]>("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME='content_revisions'", [testName]);
+  expect(tables).toHaveLength(0);
 });

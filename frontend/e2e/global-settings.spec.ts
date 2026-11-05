@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { getValue, type ResourceRecord, type Values } from "../../shared/content";
 
 // 浏览器写入均在结束时按最新版本恢复，正式账户与原有内容保持完整。
-test("全局内容直接编辑、分组发布、冲突、失败保留、历史及图片", async ({ page, context }) => {
+test("全局内容直接编辑、分组发布、冲突、失败保留及图片", async ({ page, context }) => {
   test.setTimeout(240000);
   page.setDefaultTimeout(20000);
   const credential = JSON.parse(await readFile(path.resolve("../backend/storage/private/browser-verification.json"), "utf8"));
@@ -43,6 +43,8 @@ test("全局内容直接编辑、分组发布、冲突、失败保留、历史�
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   try {
+    await expect(page.getByRole("button", { name: "刷新数据", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "历史与恢复", exact: true })).toHaveCount(0);
     await expect(page.locator(".global-settings .ant-table")).toHaveCount(0);
     await expect(page.locator(".global-settings .editor-toolbar")).toHaveCount(0);
     await expect(page.getByLabel("搜索资源")).toHaveCount(0);
@@ -83,15 +85,6 @@ test("全局内容直接编辑、分组发布、冲突、失败保留、历史�
       await expect(publicPage.locator(".footer-attribution")).toHaveCount(0);
     }
     await page.getByLabel("顶部链接文字", { exact: true }).fill("其他分组保留草稿");
-    await group("footer").getByRole("button", { name: "历史与恢复" }).click();
-    const historyDialog = page.getByRole("dialog").filter({ hasText: "页脚与版权的历史内容" });
-    const previousFooter = historyDialog.locator("details").filter({ hasText: "可编辑页脚署名验收" }).first();
-    await previousFooter.locator("summary").click();
-    await previousFooter.getByRole("button", { name: "恢复此组内容" }).click();
-    await page.getByRole("button", { name: "恢复并发布", exact: true }).click();
-    await expect.poll(async () => getValue((await get("public_content")).values, "setting_value.footerAttribution")).toBe("可编辑页脚署名验收");
-    await expect(page.getByLabel("顶部链接文字", { exact: true })).toHaveValue("其他分组保留草稿");
-    await historyDialog.locator(".ant-modal-close").click();
     await patch("public_content", { "setting_value.footerSummary": "并发发布的页脚摘要" });
     await page.getByLabel("品牌说明", { exact: true }).fill("冲突后确认发布");
     await group("brand").getByRole("button", { name: "保存并发布", exact: true }).click();
@@ -108,9 +101,6 @@ test("全局内容直接编辑、分组发布、冲突、失败保留、历史�
     await expect(page.getByText("验收期间的受控保存失败", { exact: true })).toBeVisible();
     await expect(page.getByLabel("顶部链接文字", { exact: true })).toHaveValue("其他分组保留草稿");
     await page.unroute("**/api/v1/admin/resources/settings/public_content");
-    await page.getByRole("button", { name: "刷新数据", exact: true }).click();
-    await page.getByRole("button", { name: "继续编辑", exact: true }).click();
-    await expect(page.getByLabel("顶部链接文字", { exact: true })).toHaveValue("其他分组保留草稿");
     await page.locator(".sidebar nav").getByRole("button", { name: "个人设置" }).click();
     await page.getByRole("button", { name: "继续编辑", exact: true }).click();
     await publish("navigation");
@@ -135,7 +125,7 @@ test("全局内容直接编辑、分组发布、冲突、失败保留、历史�
       if (width === 320 || width === 1440) await page.screenshot({ path: `screenshots/global-settings-${width}.png`, fullPage: true });
     }
     expect(pageErrors).toEqual([]);
-    await writeFile("reports/global-settings-verification.json", JSON.stringify({ passed: true, origin, groupedSave: true, draftsPreserved: true, attributionEditableAndClearable: true, conflictConfirmation: true, failedSavePreservesInput: true, groupHistory: true, upload: true, measurements, pageErrors }, null, 2), "utf8");
+    await writeFile("reports/global-settings-verification.json", JSON.stringify({ passed: true, origin, groupedSave: true, draftsPreserved: true, attributionEditableAndClearable: true, conflictConfirmation: true, failedSavePreservesInput: true, historyRemoved: true, upload: true, measurements, pageErrors }, null, 2), "utf8");
   } finally {
     await page.unrouteAll({ behavior: "wait" });
     for (const record of baseline) {

@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { ResourceRecord } from "../../shared/content";
+import { getValue, type ResourceRecord } from "../../shared/content";
 
 const ROOT = path.resolve("../backend");
 const SIZES = [
@@ -15,7 +16,7 @@ const SIZES = [
 ];
 
 // 代表资源通过真实界面修改和恢复，保存期间核对公开页面，不直接改写数据库。
-test("后台实际管理、即时发布、历史恢复、独立上传与七种尺寸", async ({
+test("后台实际管理、即时发布、独立上传与七种尺寸", async ({
   page,
   context,
 }) => {
@@ -99,10 +100,8 @@ test("后台实际管理、即时发布、历史恢复、独立上传与七种�
       await page.request.get(adminOrigin + "/api/v1/admin/auth/session")
     ).json()
   ).Data;
-  const api = async (url: string) => {
-    const response = await page.request.get(
-      adminOrigin + "/api/v1/admin" + url,
-    );
+  const api = async (url: string, method = "GET", data?: unknown) => {
+    const response = await page.request.fetch(adminOrigin + "/api/v1/admin" + url, { method, data, headers: { Origin: adminOrigin, "X-CSRF-Token": session.csrfToken } });
     expect(response.status()).toBe(200);
     return (await response.json()).Data;
   };
@@ -190,12 +189,12 @@ test("后台实际管理、即时发布、历史恢复、独立上传与七种�
     if (item.type === "products") {
       await page.getByRole("tab", { name: "图片与图标", exact: true }).click();
       await page.getByLabel("图标", { exact: true }).click();
-      await page.getByTitle("Radio", { exact: true }).click();
+      await page.getByRole("option", { name: "Radio", exact: true }).click();
     }
     if (item.type === "sections") {
       await page.getByRole("tab", { name: "展示设置", exact: true }).click();
       await page.getByLabel("板块样式", { exact: true }).click();
-      await page.getByTitle("soft", { exact: true }).click();
+      await page.locator(".ant-select-dropdown:visible").getByTitle("soft", { exact: true }).click();
       await page
         .getByRole("textbox", { name: "板块背景", exact: true })
         .fill("#edf2ea");
@@ -247,26 +246,8 @@ test("后台实际管理、即时发布、历史恢复、独立上传与七种�
         fullPage: true,
       });
     } finally {
-      await page.getByRole("tab", { name: "历史与恢复" }).click();
-      const row = page.locator(".revision-row").filter({
-        has: page.getByText(`版本 ${baseline.version}`, { exact: true }),
-      });
-      await row.getByRole("button", { name: "比较并恢复" }).click();
-      const restoredResponse = page.waitForResponse(
-        (response) =>
-          response
-            .url()
-            .endsWith(`/revisions/${item.type}/${baseline.id}/restore`) &&
-          response.request().method() === "POST",
-      );
-      await page
-        .getByRole("button", { name: "恢复并发布", exact: true })
-        .click();
-      expect((await restoredResponse).ok()).toBe(true);
-      await expect(page.locator(".ant-modal-wrap")).toHaveCount(0);
-      await expect(
-        page.getByText("历史版本已恢复并发布。", { exact: true }).last(),
-      ).toBeVisible();
+      const current = await api(`/resources/${item.type}/${baseline.id}`);
+      await api(`/resources/${item.type}/${baseline.id}`, "PATCH", { version: current.version, operationId: randomUUID(), changes: Object.fromEntries(baseline.fields.filter((field: ResourceRecord["fields"][number]) => !field.readonly).map((field: ResourceRecord["fields"][number]) => [field.key, getValue(baseline.values, field.key) ?? null])) });
     }
     await expect
       .poll(
@@ -281,7 +262,7 @@ test("后台实际管理、即时发布、历史恢复、独立上传与七种�
       id: baseline.id,
       uiSave: true,
       publicVerified: true,
-      uiRestore: true,
+      baselineRepublished: true,
     });
     await page.getByRole("button", { name: "返回列表", exact: true }).click();
   }
@@ -321,18 +302,10 @@ test("后台实际管理、即时发布、历史恢复、独立上传与七种�
       `[data-section-id="${hero.values.section_key}"] img[src*="${uploadedMedia.values.file_name}"]`,
     ),
   ).toBeVisible();
-  await page.getByRole("tab", { name: "历史与恢复" }).click();
-  await page
-    .locator(".revision-row")
-    .filter({
-      has: page.getByText(`版本 ${previousHero.version}`, { exact: true }),
-    })
-    .getByRole("button", { name: "比较并恢复" })
-    .click();
-  await page.getByRole("button", { name: "恢复并发布", exact: true }).click();
-  await expect
-    .poll(async () => (await api(`/resources/sections/${hero.id}`)).values.media_id)
-    .toBe(previousHero.values.media_id);
+  const latestHero = await api(`/resources/sections/${hero.id}`);
+  await api(`/resources/sections/${hero.id}`, "PATCH", { version: latestHero.version, operationId: randomUUID(), changes: { media_id: previousHero.values.media_id } });
+  await page.reload();
+  await expect(page.getByRole("button", { name: "返回列表", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "返回列表", exact: true }).click();
   await navigate(page, "产品介绍设置");
   await page.getByRole("button", { name: "产品类别", exact: true }).click();

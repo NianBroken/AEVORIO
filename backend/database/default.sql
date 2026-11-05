@@ -39,19 +39,6 @@ CREATE TABLE IF NOT EXISTS `audit_logs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 
-CREATE TABLE IF NOT EXISTS `content_revisions` (
-  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `resource_type` varchar(32) NOT NULL,
-  `resource_id` varchar(96) NOT NULL,
-  `version` int unsigned NOT NULL,
-  `snapshot_json` json NOT NULL,
-  `actor_id` varchar(64) DEFAULT NULL,
-  `operation_id` varchar(96) NOT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_revision_version` (`resource_type`,`resource_id`,`version`),
-  KEY `idx_revision_resource` (`resource_type`,`resource_id`,`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 
 CREATE TABLE IF NOT EXISTS `media_assets` (

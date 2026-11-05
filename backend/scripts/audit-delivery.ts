@@ -46,8 +46,8 @@ export async function auditDelivery(): Promise<void> {
       (e) => e.isDirectory() && e.name !== ".git",
     );
     assert(
-      roots.length === 2 &&
-        roots.every((e) => ["frontend", "backend"].includes(e.name)),
+      roots.length === 3 &&
+        roots.every((e) => ["frontend", "backend", "shared"].includes(e.name)),
       "根目录业务文件夹不符合约定。",
     );
     const resources = new ResourceService(db);
@@ -96,7 +96,7 @@ export async function auditDelivery(): Promise<void> {
     await new MediaService(
       resources,
       path.join(root, "backend/storage/media"),
-    ).verifyHistoricalFiles();
+    ).verifyFiles();
     const coverage = await resources.coverage();
     assert(
       coverage.resources.every(
@@ -105,6 +105,11 @@ export async function auditDelivery(): Promise<void> {
       "存在未映射或内容摘要不匹配的资源，交付审计未通过。",
     );
     let scanned = 0;
+    // 私有值按完整文字单元匹配，避免把较长示例密码中的数字片段判为配置泄露。
+    const privateValue = new RegExp(
+      `(?<![\\p{L}\\p{N}_])${env.DB_PASSWORD.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?![\\p{L}\\p{N}_])`,
+      "u",
+    );
     for (const file of await files(root))
       if (
         /\.(?:tsx?|m?js|json|md|map|example)$/u.test(file) &&
@@ -113,7 +118,7 @@ export async function auditDelivery(): Promise<void> {
         const content = await readFile(file, "utf8");
         if (env.DB_PASSWORD.length > 5)
           assert(
-            !content.includes(env.DB_PASSWORD),
+            !privateValue.test(content),
             `发现私有配置进入交付文件：${path.relative(root, file)}`,
           );
         scanned++;

@@ -93,7 +93,7 @@ export async function isolateRecordMedia(db: PoolConnection, record: ResourceRec
 // 默认初始化与既有数据迁移使用相同事务和媒体拆分规则。
 export async function isolateAllMedia(pool: Pool, root: string): Promise<string[]> {
   await initializeOwnership(pool);
-  const service = new ResourceService(pool, root);
+  const service = new ResourceService(pool);
   const db = await pool.getConnection();
   const changes: string[] = [];
   try {

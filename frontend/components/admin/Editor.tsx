@@ -1,9 +1,9 @@
-import { FieldValuePreview, previewMedia } from "./VisualPreview";
+import { adminContainer } from "./admin-container";
+import { FieldValuePreview } from "./VisualPreview";
 import { lazy, useEffect, useState } from "react";
 import {
   Button,
   Form,
-  Empty,
   Tabs,
   Tag,
   App,
@@ -12,7 +12,6 @@ import {
 import {
   getValue,
   setValue,
-  REVISION_PAGE_SIZE,
   RESOURCE_NAMES,
   type FieldDefinition,
   type JsonValue,
@@ -50,18 +49,6 @@ export function Editor({
     structuredClone(record.values),
   );
   const [busy, setBusy] = useState(false);
-  const [historyPage, setHistoryPage] = useState(1);
-  const [historyMore, setHistoryMore] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [revisions, setRevisions] = useState<
-    Array<{
-      id: number;
-      version: number;
-      snapshot_json: ResourceRecord;
-      created_at: string;
-      username: string;
-    }>
-  >([]);
   const { message, modal } = App.useApp();
   const dirty = JSON.stringify(values) !== JSON.stringify(record.values);
   useEffect(() => {
@@ -83,6 +70,7 @@ export function Editor({
   const close = () => {
     if (dirty)
       modal.confirm({
+        getContainer: adminContainer,
         title: "当前修改尚未发布",
         content: "离开将丢弃未保存的输入。",
         okText: "放弃修改",
@@ -117,76 +105,6 @@ export function Editor({
     }
   };
   const upload = useMediaUpload(record, onMediaUploaded, setBusy);
-  const loadHistory = async (page = 1) => {
-    setHistoryLoading(true);
-    try {
-      const rows = await api<typeof revisions>(
-        `/revisions/${record.type}/${record.id}?page=${page}`,
-      );
-      setRevisions((old) => (page === 1 ? rows : [...old, ...rows]));
-      setHistoryPage(page);
-      setHistoryMore(rows.length === REVISION_PAGE_SIZE);
-    } catch (error) {
-      message.error((error as Error).message);
-    } finally {
-      setHistoryLoading(false);
-    }
-  };
-  const restore = (revision: (typeof revisions)[number]) =>
-    modal.confirm({
-      title: `恢复版本 ${revision.version} 并立即发布`,
-      content: (
-        <div>
-          <p>只恢复当前对象，生成新的发布版本。</p>
-          <div className="revision-diff">
-            {record.fields
-              .filter(
-                (f) =>
-                  !f.readonly &&
-                  JSON.stringify(getValue(record.values, f.key)) !==
-                    JSON.stringify(
-                      getValue(revision.snapshot_json.values, f.key),
-                    ),
-              )
-              .map((field) => (
-                <div className="preview-change" key={field.key}>
-                  <strong>{field.label}</strong>
-                  <del><FieldValuePreview field={field} values={record.values} media={[...media, ...(record.relatedMedia ?? [])]} /></del>
-                  <p>
-                    <FieldValuePreview field={field} values={revision.snapshot_json.values} media={previewMedia(revision.snapshot_json, media)} />
-                  </p>
-                </div>
-              ))}
-          </div>
-          {record.references.length > 0 && (
-            <p>影响位置：{record.references.map((r) => r.title).join("、")}</p>
-          )}
-        </div>
-      ),
-      width: 650,
-      okText: "恢复并发布",
-      cancelText: "取消",
-      onOk: async () => {
-        try {
-          const updated = await api<ResourceRecord>(
-            `/revisions/${record.type}/${record.id}/restore`,
-            "POST",
-            {
-              version: record.version,
-              revisionId: revision.id,
-              operationId: createId(),
-            },
-          );
-          setValues(updated.values);
-          onSaved(updated);
-          await loadHistory();
-          message.success("历史版本已恢复并发布。");
-        } catch (error) {
-          message.error((error as Error).message);
-          throw error;
-        }
-      },
-    });
   const groups = [
     {
       key: "content",
@@ -238,15 +156,12 @@ export function Editor({
         description={
           record.references.length
             ? `当前内容关联 ${record.references.length} 个位置。${record.references.map((r) => r.title).join("、")}`
-            : "当前编辑针对这一条资源，历史记录可用于恢复。"
+            : "当前编辑针对这一条资源，保存后立即更新公开网站。"
         }
       />
       <div className="editor-columns">
         <div className="editor-form">
           <Tabs
-            onChange={(key) => {
-              if (key === "history") void loadHistory();
-            }}
             items={[
               ...groups
                 .filter((g) => record.fields.some(g.test))
@@ -277,45 +192,6 @@ export function Editor({
                     </Form>
                   ),
                 })),
-              {
-                key: "history",
-                label: "历史与恢复",
-                children: (
-                  <div>
-                    {revisions.length ? (
-                      revisions.map((revision) => (
-                        <div className="revision-row" key={revision.id}>
-                          <div>
-                            <strong>版本 {revision.version}</strong>
-                            <p>
-                              {new Date(revision.created_at).toLocaleString(
-                                "zh-CN",
-                              )}{" "}
-                              / {revision.username ?? "初始化"}
-                            </p>
-                          </div>
-                          <Button
-                            disabled={busy}
-                            onClick={() => restore(revision)}
-                          >
-                            比较并恢复
-                          </Button>
-                        </div>
-                      ))
-                    ) : (
-                      <Empty description="尚无历史修改" />
-                    )}
-                    {historyMore && (
-                      <Button
-                        loading={historyLoading}
-                        onClick={() => void loadHistory(historyPage + 1)}
-                      >
-                        加载更早的历史
-                      </Button>
-                    )}
-                  </div>
-                ),
-              },
             ]}
           />
         </div>
@@ -342,7 +218,7 @@ export function Editor({
           <div className="preview-guide">
             <strong>操作说明</strong>
             <p>
-              保存会立即发布。图片仅归属当前使用位置。历史恢复也会立即发布。
+              保存会立即发布。图片仅归属当前使用位置。
             </p>
           </div>
         </aside>

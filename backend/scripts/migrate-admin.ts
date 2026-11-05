@@ -44,6 +44,9 @@ export async function migrateAdmin(db: mysql.Connection): Promise<void> {
     "SELECT version FROM schema_versions WHERE version=?",
     [MIGRATION_VERSION],
   );
+  // 业务历史不参与当前发布与媒体引用，兼容旧备份时同样清理。
+  await db.query("DROP TABLE IF EXISTS content_revisions");
+  await db.execute("INSERT IGNORE INTO schema_versions(version) VALUES(4)");
   if (applied.length) return;
   await db.query(
     "ALTER TABLE products MODIFY COLUMN description TEXT NOT NULL",

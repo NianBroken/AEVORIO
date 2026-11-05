@@ -1,4 +1,6 @@
 "use client";
+import { LoadingState, LoadingIndicator, LoadingActivity } from "./LoadingState";
+import { adminContainer } from "./admin-container";
 import { VisualPreviewProvider } from "./VisualPreview";
 import { createId } from "../../lib/create-id";
 import { PASSWORD_PATTERN, PASSWORD_MESSAGE } from "../../../shared/password";
@@ -12,7 +14,6 @@ import {
   Modal,
   Empty,
   Space,
-  Spin,
   Tag,
 } from "antd";
 import zhCN from "antd/locale/zh_CN";
@@ -127,7 +128,6 @@ function Application() {
   } | null>(null);
   const [creating, setCreating] = useState(false);
   const [globalDirty, setGlobalDirty] = useState(false);
-  const [globalReload, setGlobalReload] = useState(0);
   const [listPage, setListPage] = useState(1);
   const [pageSize, setPageSize] = useState(12);
   const { message, modal } = App.useApp();
@@ -255,9 +255,8 @@ function Application() {
     setBusy(true);
     setError("");
     try {
-      if (target === "global") {
-        setGlobalReload((value) => value + 1);
-      } else if (target === "overview") {
+      if (target === "global") return;
+      if (target === "overview") {
         const data = await api<NonNullable<typeof overview>>("/overview");
         if (ticket === refreshTicket.current) setOverview(data);
       } else if (target !== "personal") {
@@ -335,6 +334,7 @@ function Application() {
     };
     if (record || globalDirty)
       modal.confirm({
+      getContainer: adminContainer,
         title: "离开当前编辑区域",
         content: "未保存的输入将被丢弃，请确认已完成保存。",
         okText: "离开编辑",
@@ -366,6 +366,7 @@ function Application() {
   };
   const remove = (item: ResourceRecord) =>
     modal.confirm({
+        getContainer: adminContainer,
       title: "将对象移入可恢复记录",
       content:
         "此操作立即影响公开网站。存在引用或板块数量不足时，服务端会拒绝操作。",
@@ -463,7 +464,7 @@ function Application() {
               <header className="admin-header">
                 <div>
                   <span className="status-dot" />
-                  内容服务已连接<span className="header-divider">/</span>
+                  <LoadingActivity />内容服务已连接<span className="header-divider">/</span>
                   <span>正式内容管理</span>
                 </div>
                 <Space size={22}>
@@ -519,23 +520,10 @@ function Application() {
                   />
                 ) : (
                   <>
-                    <div className={`page-heading${view === "global" ? " global-refresh" : ""}`}>
-                      {view !== "global" && <div>
-                        <p className="eyebrow">AEVORIO / CONTENT STUDIO</p>
-                        <h1>{MENU.find((item) => item.key === view)?.label}</h1>
-                        <p>
-                          {view === "overview"
-                            ? "从一处维护网站内容，让每一项修改准确呈现。"
-                            : "编辑真实发布内容，图片、文字与展示位置保持明确对应。"}
-                        </p>
-                      </div>}
-                      <Button aria-label="刷新数据" onClick={() => {
-                        if (globalDirty) modal.confirm({ title: "刷新全局内容", content: "刷新将丢弃尚未保存的输入。", okText: "丢弃并刷新", cancelText: "继续编辑", onOk: () => refresh() });
-                        else void refresh();
-                      }} loading={busy}>
-                        刷新数据
-                      </Button>
-                    </div>
+                    {view !== "global" && <div className="page-heading">
+                      <div><p className="eyebrow">AEVORIO / CONTENT STUDIO</p><h1>{MENU.find((item) => item.key === view)?.label}</h1><p>{view === "overview" ? "从一处维护网站内容，让每一项修改准确呈现。" : "编辑真实发布内容，图片、文字与展示位置保持明确对应。"}</p></div>
+                      <Button aria-label="刷新数据" onClick={() => void refresh()} loading={busy}>刷新数据</Button>
+                    </div>}
                     {view === "overview" && overview ? (
                       <>
                         <div className="overview-banner">
@@ -549,7 +537,7 @@ function Application() {
                               让每次更新都有依据。
                             </h2>
                             <p>
-                              三个公开页面，共享同一份内容来源。所有修改均保存历史，支持比较与恢复。
+                              三个公开页面，共享同一份内容来源。内容修改经校验后立即发布。
                             </p>
                             <Button onClick={() => navigate("home")}>
                               管理页面内容 <ArrowUpRight size={15} />
@@ -611,7 +599,7 @@ function Application() {
                                   {
                                     title: "操作",
                                     dataIndex: "action",
-                                    render: (v) => ACTION_NAMES[v] ?? v,
+                                    render: (v) => ACTION_NAMES[v] ?? "内容操作",
                                   },
                                   { title: "管理员", dataIndex: "username" },
                                   {
@@ -650,8 +638,8 @@ function Application() {
                     ) : view === "personal" && user ? (
                       <PersonalSettings user={user} onChanged={setUser} />
                     ) : view === "global" ? (
-                      <Suspense fallback={<Spin />}>
-                        <GlobalSettings key={globalReload} reloadToken={globalReload} onDirtyChange={setGlobalDirty} />
+                      <Suspense fallback={<LoadingState variant="region" />}>
+                        <GlobalSettings onDirtyChange={setGlobalDirty} />
                       </Suspense>
                     ) : view !== "overview" ? (
                       <section className="panel">
@@ -847,7 +835,7 @@ function Login({
         <p>
           管理全站内容、页面模块与管理员账户。
           <br />
-          每一次发布，都能追溯和恢复。
+          每一次发布，都经过校验并记录操作。
         </p>
         <small>AEVORIO / NianBroken</small>
       </div>
@@ -1296,8 +1284,9 @@ function CreateDialog({
 }
 export default function AdminApplication() { return (
   <ConfigProvider
-    button={{ autoInsertSpace: false }}
+    button={{ autoInsertSpace: false, loadingIcon: <LoadingIndicator /> }}
     locale={zhCN}
+    spin={{ indicator: <LoadingIndicator /> }}
     getPopupContainer={(trigger) =>
       trigger?.parentElement ??
       document.querySelector<HTMLElement>(".admin-stage") ??
@@ -1331,17 +1320,3 @@ export default function AdminApplication() { return (
     </App>
   </ConfigProvider>
 ); }
-
-function LoadingState({ standalone = false }: { standalone?: boolean }) {
-  return (
-    <div className={standalone ? "loading-page loading-standalone" : "loading-page"} role="status" aria-live="polite">
-      <div className="loading-card">
-        <span className="eyebrow">AEVORIO / 内容管理</span>
-        <Spin size="large" />
-        <strong>正在准备管理工作台</strong>
-        <p>页面内容加载中，请稍候。</p>
-        <div className="loading-lines" aria-hidden="true"><i /><i /><i /></div>
-      </div>
-    </div>
-  );
-}

@@ -190,17 +190,6 @@ export class MediaService {
         await db.execute("INSERT INTO media_ownership(media_id,owner_type,owner_id,field_key,claimed) VALUES(?, 'upload', ?, '',0)", [id, context.actorId]);
         const record = await this.resources.get("media", id, db);
         await db.execute(
-          "INSERT INTO content_revisions(resource_type,resource_id,version,snapshot_json,actor_id,operation_id) VALUES(?,?,?,?,?,?)",
-          [
-            "media",
-            id,
-            record.version,
-            JSON.stringify(record),
-            context.actorId,
-            context.operationId,
-          ],
-        );
-        await db.execute(
           "INSERT INTO audit_logs(actor_id,action,resource_type,resource_id,operation_id,request_id) VALUES(?,?,?,?,?,?)",
           [
             context.actorId,
@@ -231,10 +220,10 @@ export class MediaService {
       if (file.endsWith(".tmp"))
         await rm(path.join(staging, file), { force: true });
     await this.cleanup();
-    await this.verifyHistoricalFiles();
+    await this.verifyFiles();
   }
 
-  // 当前媒体和全部可恢复历史共同保护文件，清理仅移除两者均不引用的文件。
+  // 当前媒体和不可变文件版本共同保护文件，清理仅移除未被引用的文件。
   public async cleanup(): Promise<{ removed: string[]; retained: number }> {
     return this.withFileLock(() => this.cleanupLocked());
   }
@@ -254,17 +243,6 @@ export class MediaService {
       ...rows.map((r) => String(r.file_name)),
       ...history.map((r) => String(decode(r.metadata_json).file_name)),
     ]);
-    const [revisions] = await this.resources.database.query<RowDataPacket[]>(
-      "SELECT snapshot_json FROM content_revisions",
-    );
-    const collect = (value: unknown): void => {
-      if (!value || typeof value !== "object") return;
-      for (const [key, entry] of Object.entries(value)) {
-        if (key === "file_name" && typeof entry === "string") keep.add(entry);
-        else if (entry && typeof entry === "object") collect(entry);
-      }
-    };
-    for (const revision of revisions) collect(decode(revision.snapshot_json));
     const removed: string[] = [];
     for (const name of await readdir(this.mediaRoot)) {
       const original = name.startsWith("thumb-") ? name.slice(6) : name;
@@ -276,7 +254,7 @@ export class MediaService {
     return { removed, retained: keep.size };
   }
 
-  // 上传宽限期内保留未发布文件，业务数据与业务历史共同阻止过期图片被清理。
+  // 上传宽限期内保留未发布文件，全部业务记录共同阻止过期图片被清理。
   private async removeAbandonedUploads(): Promise<void> {
     const db = await this.resources.database.getConnection();
     try {
@@ -288,11 +266,8 @@ export class MediaService {
         const [records] = await db.query<RowDataPacket[]>("SELECT * FROM ??", [table]);
         protectedValues.push(...records.map(record => JSON.stringify(record)));
       }
-      const [revisions] = await db.query<RowDataPacket[]>("SELECT snapshot_json FROM content_revisions WHERE resource_type<>'media'");
-      protectedValues.push(...revisions.map(record => JSON.stringify(record.snapshot_json)));
       for (const candidate of candidates) {
         if (protectedValues.some(value => value.includes(String(candidate.id)) || value.includes(String(candidate.file_name)))) continue;
-        await db.execute("DELETE FROM content_revisions WHERE resource_type='media' AND resource_id=?", [candidate.id]);
         await db.execute("DELETE FROM media_versions WHERE media_id=?", [candidate.id]);
         await db.execute("DELETE FROM media_ownership WHERE media_id=? AND claimed=0", [candidate.id]);
         await db.execute("DELETE FROM media_assets WHERE id=?", [candidate.id]);
@@ -329,7 +304,7 @@ export class MediaService {
     }
   }
 
-  public async verifyHistoricalFiles(): Promise<void> {
+  public async verifyFiles(): Promise<void> {
     const [rows] = await this.resources.database.query<RowDataPacket[]>(
       "SELECT metadata_json FROM media_versions",
     );
@@ -341,7 +316,7 @@ export class MediaService {
       );
       const bytes = await readFile(full);
       if (createHash("sha256").update(bytes).digest("hex") !== data.sha256)
-        throw new Error("媒体历史文件哈希校验失败。");
+        throw new Error("媒体文件哈希校验失败。");
     }
   }
 }
