@@ -379,6 +379,7 @@ p {
   margin: 0;
 }
 .inline-media-field {
+  flex-direction: column;
   display: flex;
   align-items: flex-start;
   flex-wrap: wrap;
@@ -527,7 +528,8 @@ code {
 }
 .icon-field {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 15px;
 }
@@ -700,3 +702,5 @@ code {
 .visual-gallery { display: flex; flex-wrap: wrap; gap: 8px; }
 .media-error { display: inline-block; color: #9c392d; font-size: 12px; white-space: normal; }
 .editor-preview .visual-option { display: flex; flex-wrap: wrap; }
+
+.gallery-media-field { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }

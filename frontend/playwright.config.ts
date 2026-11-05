@@ -17,7 +17,7 @@ export default defineConfig({
   ],
   projects: [
     { name: "visual-options", testMatch: "visual-options.spec.ts", dependencies: ["maintenance", "admin-compatibility"] },
-    { name: 'admin-routes', testMatch: ['admin-routes.spec.ts', 'loading.spec.ts'] },
+    { name: 'admin-routes', testMatch: ['admin-routes.spec.ts', 'loading.spec.ts', 'upload-layout.spec.ts'] },
     { name: 'website', testMatch: ['site.spec.ts', 'failure-state.spec.ts', 'layout-compatibility.spec.ts', 'native-zoom.spec.ts'] },
     { name: 'admin', testMatch: 'admin.spec.ts', dependencies: ['website'] },
     { name: 'global-settings', testMatch: 'global-settings.spec.ts', dependencies: ['admin'] },

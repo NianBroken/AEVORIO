@@ -1,6 +1,6 @@
 import { VisualOption, MediaPreview } from "./VisualPreview";
 import { Button, Input, InputNumber, Switch, Select, Space, Upload } from "antd";
-import { getValue, ICON_NAMES, type FieldDefinition, type JsonValue, type ResourceRecord, type Values } from "../../../shared/content";
+import { getValue, defaultIconFor, type FieldDefinition, type JsonValue, type ResourceRecord, type Values } from "../../../shared/content";
 import { createId } from "../../lib/create-id";
 
 
@@ -62,10 +62,11 @@ export function EditorField({ field, values, busy, change, media: currentMedia, 
     if (field.kind === "image")
       return (
         <div className="inline-media-field">
-          {value && <Button disabled={busy || field.required} onClick={() => change(field.key, "")}>移除图片</Button>}
+          <MediaPreview src={options.find((item) => item.value === value)?.src ?? ""} alt={field.label} />
           <Upload
             accept=".png,.jpg,.jpeg,.webp"
             showUploadList={false}
+            disabled={busy || field.readonly}
             beforeUpload={(file) => {
               void upload(file, field.key).then((uploaded) => {
                 if (uploaded) change(field.key, uploaded.id);
@@ -73,32 +74,20 @@ export function EditorField({ field, values, busy, change, media: currentMedia, 
               return false;
             }}
           >
-            <Button disabled={busy}>上传图片</Button>
+            <Button disabled={busy || field.readonly}>上传图片</Button>
           </Upload>
-          {value && <MediaPreview src={options.find((item) => item.value === value)?.src ?? ""} alt={field.label} />}
+          {value && <Button disabled={busy || field.required} onClick={() => change(field.key, "")}>移除图片</Button>}
+
         </div>
       );
     if (field.kind === "icon")
       return (
         <div className="icon-field">
-          <Select
-            {...common}
-            className="visual-select"
-            showSearch={{ optionFilterProp: "label" }}
-            virtual={false}
-            listHeight={360}
-            value={String(value ?? "")}
-            options={[
-              ...ICON_NAMES.map((name) => ({ value: name, label: name, title: name })),
-              ...(String(value ?? "").startsWith("media:") ? [{ value: String(value), label: "上传图标", title: "上传图标" }] : []),
-            ]}
-            optionRender={(option) => <VisualOption field={field} values={values} media={currentMedia} value={String(option.value)} />}
-            labelRender={(option) => <VisualOption field={field} values={values} media={currentMedia} value={String(option.value)} />}
-            onChange={(v) => change(field.key, v)}
-          />
+          <VisualOption field={field} values={values} media={currentMedia} value={String(value || field.defaultIcon || defaultIconFor(field.key))} />
           <Upload
             accept=".png,.jpg,.jpeg,.webp"
             showUploadList={false}
+            disabled={busy || field.readonly}
             beforeUpload={(file) => {
               void upload(file, field.key).then((uploaded) => {
                 if (uploaded) change(field.key, `media:${uploaded.id}`);
@@ -106,9 +95,9 @@ export function EditorField({ field, values, busy, change, media: currentMedia, 
               return false;
             }}
           >
-            <Button disabled={busy}>上传图标</Button>
+            <Button disabled={busy}>上传自定义图片</Button>
           </Upload>
-          {value && <Button disabled={busy} onClick={() => change(field.key, "CircuitBoard")}>使用默认图标</Button>}
+          <Button disabled={busy || field.readonly || value === (field.defaultIcon ?? defaultIconFor(field.key))} onClick={() => change(field.key, field.defaultIcon ?? defaultIconFor(field.key))}>恢复默认图片</Button>
         </div>
       );
     if (field.kind === "select")
@@ -229,7 +218,7 @@ function ListField({
           }
         >
           {options ? (
-            <Space>
+            <div className="gallery-media-field">
               {options.find(option => option.value === item)?.src ? <MediaPreview src={options.find(option => option.value === item)!.src!} alt={`${field.label}第${index + 1}项`} /> : <span>请上传图片</span>}
               {onUpload && (
                 <Upload
@@ -243,7 +232,7 @@ function ListField({
                   <Button>上传图片</Button>
                 </Upload>
               )}
-            </Space>
+            </div>
           ) : (
             <Input
               aria-label={`${field.label}第${index + 1}项`}

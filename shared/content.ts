@@ -30,6 +30,7 @@ export interface FieldDefinition {
   max?: number;
   options?: string[];
   readonly?: boolean;
+  defaultIcon?: string;
 }
 export interface ResourceRecord {
   relatedMedia?: ResourceRecord[];
@@ -248,4 +249,12 @@ export function textList(value: unknown): string[] {
         )
         .filter(Boolean)
     : [];
+}
+
+// 每类图标字段的系统默认值由前后台共同使用。
+export function defaultIconFor(key: string): string {
+  const name = key.split(".").at(-1) ?? key;
+  const configured = INITIAL_PUBLIC_CONTENT[name];
+  if (typeof configured === "string" && /Icon$/u.test(name)) return configured;
+  return ({ primaryIcon: "ArrowUpRight", secondaryIcon: "MoveRight", arrowIcon: "ArrowDownRight", icon: "CircuitBoard" } as Record<string, string>)[name] ?? "CircuitBoard";
 }

@@ -2,7 +2,7 @@ import { LoadingState } from "./LoadingState";
 import { beginRequest } from "./request-activity";
 import { createContext, useContext, useEffect, useState, type ReactNode, type CSSProperties } from "react";
 import NextImage from "next/image";
-import { getValue, INITIAL_PUBLIC_CONTENT, type FieldDefinition, type ResourceRecord, type Values } from "../../../shared/content";
+import { getValue, defaultIconFor, INITIAL_PUBLIC_CONTENT, type FieldDefinition, type ResourceRecord, type Values } from "../../../shared/content";
 import { fontFamily, decorationStyle, VISUAL_LABELS, CONTENT_PUBLISHED_EVENT } from "../../lib/visual-options";
 import type { SitePayload } from "../../../shared/site";
 import { IconPreview } from "./IconPreview";
@@ -69,13 +69,14 @@ export function VisualOption({ field, values, media, value }: Context & { value:
   const { content } = useContext(PreviewContext);
   const color = (name: string) => String(getValue(values, `setting_value.${name}`) ?? content[name] ?? INITIAL_PUBLIC_CONTENT[name]);
   let visual;
+  if (field.kind === "icon" && !value) value = field.defaultIcon ?? defaultIconFor(field.key);
   if (field.kind === "icon") visual = value.startsWith("media:") ? <MediaPreview src={assetUrl(value, media)} alt={field.label} /> : <IconPreview name={value} />;
   else if (key === "imageFit" || key === "imagePosition") visual = <PositionPreview field={field} values={values} media={media} value={value} />;
   else if (key === "font") visual = <span className="visual-font" style={{ fontFamily: fontFamily(value) }}>工程设计 AEVORIO</span>;
   else if (key === "decoration") visual = <span className="visual-surface" style={{ backgroundColor: color("paper"), ...decorationStyle(value) }} />;
   else if (key === "style") visual = <span className="visual-surface" style={{ backgroundColor: value === "soft" ? color("paperSoft") : color("paper") }}><span className="visual-section" style={{ borderColor: value === "plain" ? "transparent" : color("line"), color: color("ink") }}>AEVORIO<br />工程与产品</span></span>;
   else return <span>{value}</span>;
-  return <span className={`visual-option visual-${field.kind === "icon" ? "icon" : key}`} data-visual-value={value}>{visual}<span>{VISUAL_LABELS[value] ?? (value.startsWith("media:") ? "上传图标" : value)}</span></span>;
+  return <span className={`visual-option visual-${field.kind === "icon" ? "icon" : key}`} data-visual-value={value}>{visual}<span>{field.kind === "icon" ? (value.startsWith("media:") ? "自定义图片" : "系统默认图片") : VISUAL_LABELS[value] ?? value}</span></span>;
 }
 
 // 修改预览与冲突比较使用同一资源展示规则。

@@ -1,5 +1,6 @@
 import {
   INITIAL_PUBLIC_CONTENT,
+  defaultIconFor,
   PUBLIC_LABELS,
   PROTECTED_SECTION_TYPES,
   SECTION_NAMES,
@@ -240,6 +241,7 @@ export function fieldsFor(
         key: full,
         label: (publicFields ? PUBLIC_LABELS[key] : LABELS[key]) ?? key,
         kind,
+        ...(kind === "icon" ? { defaultIcon: defaultIconFor(full) } : {}),
         max:
           (publicFields ? PUBLIC_LENGTHS[key] : undefined) ??
           columnLimits[key] ??

@@ -188,8 +188,7 @@ test("后台实际管理、即时发布、独立上传与七种尺寸", async ({
     await page.getByLabel(item.field, { exact: true }).fill(item.value);
     if (item.type === "products") {
       await page.getByRole("tab", { name: "图片与图标", exact: true }).click();
-      await page.getByLabel("图标", { exact: true }).click();
-      await page.getByRole("option", { name: "Radio", exact: true }).click();
+      await expect(page.locator(".icon-field .ant-select")).toHaveCount(0);
     }
     if (item.type === "sections") {
       await page.getByRole("tab", { name: "展示设置", exact: true }).click();
@@ -223,7 +222,7 @@ test("后台实际管理、即时发布、独立上传与七种尺寸", async ({
           .click();
       if (item.type === "products")
         await expect(
-          publicPage.locator('.product-dialog [data-managed-icon="Radio"]'),
+          publicPage.locator(`.product-dialog [data-managed-icon="${baseline.values.icon}"]`),
         ).toBeVisible();
       if (item.type === "sections")
         await expect(
@@ -408,12 +407,13 @@ test("后台实际管理、即时发布、独立上传与七种尺寸", async ({
     publicPage.getByText("界面创建验证板块", { exact: true }),
   ).toHaveCount(0);
   await deleteFromEditor();
+  const company = await api("/resources/settings/company_name");
   const bad = await page.request.patch(
     adminOrigin + "/api/v1/admin/resources/settings/company_name",
     {
       headers: { Origin: adminOrigin, "X-CSRF-Token": session.csrfToken },
       data: {
-        version: 1,
+        version: company.version + 1,
         operationId: crypto.randomUUID(),
         changes: { invalid: "bad" },
       },

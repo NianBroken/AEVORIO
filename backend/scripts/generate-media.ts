@@ -55,6 +55,7 @@ async function main(): Promise<void> {
   }
 
   await mkdir(mediaDirectory, { recursive: true });
+  await sharp(await readFile(path.join(rootDirectory, "storage/source-icons/site-icon.svg"))).resize(128, 128).png().toFile(path.join(mediaDirectory, "site-favicon.png"));
 
   for (const entry of entries) {
     const output = path.join(mediaDirectory, path.basename(entry.fileName));

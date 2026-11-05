@@ -1,6 +1,6 @@
 import { chromium, firefox, webkit, expect, test, type BrowserContext } from "@playwright/test";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { ICON_NAMES, type ResourceRecord } from "../../shared/content";
+import { type ResourceRecord } from "../../shared/content";
 
 const SIZES = [[320, 700], [390, 844], [768, 1024], [1024, 768], [1280, 800], [1440, 900], [1600, 900], [1920, 1080], [2560, 600]];
 
@@ -36,12 +36,9 @@ for (const [name, engine] of Object.entries({ chromium, firefox, webkit })) {
       await expect(page.getByLabel("网站名称", { exact: true })).toBeVisible({ timeout: 20000 });
       await expect(page.locator(".page-heading h1, .page-heading .eyebrow, .global-settings-links")).toHaveCount(0);
       await expect(page.getByLabel("网站名称", { exact: true })).toBeVisible();
-      const icons = page.locator(".icon-field .ant-select").first();
-      await icons.click();
+      await expect(page.locator(".icon-field .ant-select")).toHaveCount(0);
+      await expect(page.locator(".icon-field svg[data-managed-icon]").first()).toBeVisible();
       const popup = page.locator(".ant-select-dropdown:visible");
-      await expect(popup.locator("svg[data-managed-icon]")).toHaveCount(ICON_NAMES.length);
-      await page.keyboard.press("Escape");
-      await expect(page.locator(".ant-select-dropdown:visible")).toHaveCount(0);
       for (const [label, count] of [["字体", 3], ["背景装饰", 2]] as const) {
         const field = page.getByRole("combobox", { name: label, exact: true });
         await field.click();

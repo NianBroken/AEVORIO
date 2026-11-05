@@ -1,7 +1,7 @@
 "use client";
 import { LoadingState, LoadingIndicator, LoadingActivity } from "./LoadingState";
 import { adminContainer } from "./admin-container";
-import { VisualPreviewProvider } from "./VisualPreview";
+import { MediaPreview, VisualPreviewProvider } from "./VisualPreview";
 import { createId } from "../../lib/create-id";
 import { PASSWORD_PATTERN, PASSWORD_MESSAGE } from "../../../shared/password";
 import { lazy, Suspense, useEffect, useState, useRef, useEffectEvent } from "react";
@@ -1055,6 +1055,7 @@ function PasswordChange({ onChanged }: { onChanged: (user: User) => void }) {
 }
 function CreateDialog({
   type,
+  media,
   categories,
   pages,
   pageId,
@@ -1257,7 +1258,8 @@ function CreateDialog({
           label="图片"
           required={type === "products"}
         >
-          <Space>
+          <div className="inline-media-field">
+            <MediaPreview src={media.find((item) => item.id === uploadedMedia)?.values.file_name ? `/media/${media.find((item) => item.id === uploadedMedia)!.values.file_name}` : ""} alt="图片" />
             <Form.Item
               name="media"
               noStyle
@@ -1265,7 +1267,7 @@ function CreateDialog({
             >
               <Input aria-label="图片" readOnly style={{ display: "none" }} />
             </Form.Item>
-            <span>{uploadedMedia ? "已上传当前图片" : "请在此上传图片"}</span>
+
             <Upload
               accept=".png,.jpg,.jpeg,.webp"
               showUploadList={false}
@@ -1276,7 +1278,7 @@ function CreateDialog({
             >
               <Button disabled={busy}>上传并使用</Button>
             </Upload>
-          </Space>
+          </div>
         </Form.Item>
       </Form>
     </Modal>
