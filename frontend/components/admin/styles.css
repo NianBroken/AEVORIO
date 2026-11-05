@@ -32,7 +32,6 @@ a {
 }
 .admin-stage {
   transform: translateZ(0);
-  zoom: var(--canvas-scale, calc(100cqw / 1440px));
   position: relative;
   top: 0;
   left: 0;
@@ -47,7 +46,7 @@ a {
   position: absolute;
   left: 0;
   top: var(--scaled-scroll-top, 0px);
-  width: 1440px;
+  width: var(--canvas-width);
   height: var(--scaled-viewport-height, 900px);
   z-index: 2000;
 }
@@ -575,7 +574,7 @@ code {
   padding: 14px;
 }
 .login-page {
-  width: 1440px;
+  width: var(--canvas-width);
   min-height: var(--scaled-viewport-height, 900px);
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -638,7 +637,7 @@ code {
   margin-top: 30px;
 }
 .password-page {
-  width: 1440px;
+  width: var(--canvas-width);
   min-height: var(--scaled-viewport-height, 900px);
   display: grid;
   place-items: center;
@@ -662,7 +661,7 @@ code {
   border: 0;
 }
 .loading-page {
-  width: 1440px;
+  width: var(--canvas-width);
   min-height: var(--scaled-viewport-height, 900px);
   display: grid;
   place-items: center;
@@ -694,7 +693,10 @@ code {
 }
 .ant-modal-root {
   position: relative;
+  pointer-events: none;
 }
+.ant-modal-root .ant-modal-wrap,
+.ant-modal-root .ant-modal-mask { pointer-events: auto; }
 .ant-upload-wrapper {
   display: inline-block;
 }
@@ -721,3 +723,16 @@ code {
 .loading-lines i:nth-child(3) { width: 55%; }
 @keyframes loading-pulse { 50% { opacity: .4; } }
 @media (prefers-reduced-motion: reduce) { .loading-lines i { animation: none; } }
+
+.global-settings { display: grid; gap: 22px; min-width: 0; }
+.global-settings-links { display: flex; flex-wrap: wrap; gap: 12px 24px; padding: 18px 24px; background: #fafbf8; border: 1px solid #dfe5dc; border-radius: 6px; font-size: 12px; }
+.global-settings-group { min-width: 0; scroll-margin-top: 24px; }
+.global-group-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+.global-group-heading h2 { margin: 0; font-size: 18px; }
+.global-group-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 30px; }
+.global-group-fields .ant-form-item { min-width: 0; margin-bottom: 24px; }
+.global-field-wide { grid-column: 1 / -1; }
+.global-settings-loading { padding: 80px; }
+.global-history-item { padding: 16px 0; border-bottom: 1px solid #dfe5dc; }
+.global-history-item summary { cursor: pointer; margin-bottom: 16px; }
+.global-history-item .preview-change p { white-space: pre-wrap; overflow-wrap: anywhere; }

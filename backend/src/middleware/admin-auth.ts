@@ -1,4 +1,5 @@
 import { readEnvironment } from "../config/env";
+import { allowedFrontendOrigins } from "../config/network";
 import session from "express-session";
 import mysqlSession from "express-mysql-session";
 import { randomBytes, timingSafeEqual } from "node:crypto";
@@ -79,7 +80,7 @@ export const verifyCsrf: RequestHandler = (request, _response, next) => {
   const actualBytes = Buffer.from(token);
   const expectedBytes = Buffer.from(expected);
   if (
-    request.get("Origin") !== adminOrigin() ||
+    !allowedFrontendOrigins(adminOrigin()).has(request.get("Origin") ?? "") ||
     actualBytes.length !== expectedBytes.length ||
     !expected ||
     !timingSafeEqual(actualBytes, expectedBytes)

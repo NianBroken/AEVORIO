@@ -17,11 +17,6 @@ interface ProductMatrixProps {
   section: SiteSection;
 }
 
-interface DialogFrame {
-  height: number;
-  top: number;
-}
-
 // 图片、文字与同页原生键盘弹窗始终对应一条唯一的 MySQL 示例产品记录。
 export function ProductMatrix({
   category,
@@ -31,10 +26,6 @@ export function ProductMatrix({
   const { copy } = useSiteContent();
   const dialogRef = useRef<HTMLDivElement>(null);
   const [activeProduct, setActiveProduct] = useState<SiteProduct | null>(null);
-  const [dialogFrame, setDialogFrame] = useState<DialogFrame>({
-    height: 900,
-    top: 0,
-  });
 
   useLayoutEffect(() => {
     if (!activeProduct) return;
@@ -82,16 +73,6 @@ export function ProductMatrix({
   };
 
   const openProduct = (product: SiteProduct): void => {
-    const shell = document.querySelector<HTMLElement>(
-      '[data-scaled-layout="1440"]',
-    );
-    const pageScale = Number(shell?.getAttribute("data-scale-factor"));
-    const safeScale =
-      Number.isFinite(pageScale) && pageScale > 0 ? pageScale : 1;
-    setDialogFrame({
-      height: window.innerHeight / safeScale,
-      top: window.scrollY / safeScale,
-    });
     setActiveProduct(product);
   };
 
@@ -165,10 +146,6 @@ export function ProductMatrix({
       {activeProduct && (
         <div
           className="product-dialog-scrim"
-          style={{
-            height: `${dialogFrame.height}px`,
-            top: `${dialogFrame.top}px`,
-          }}
           onClick={(event) => {
             if (event.target === event.currentTarget) setActiveProduct(null);
           }}

@@ -6,13 +6,17 @@ import { MediaService } from "./services/media-service";
 import { ResourceService } from "./services/resource-service";
 import path from "node:path";
 import { secureDirectory } from "./utils/private-storage";
+import { migratePublicContent } from "./database/public-content-migration";
+import { refreshLanAddresses } from "./config/network";
 
 export async function startServer(): Promise<void> {
   const environment = readEnvironment();
+  await refreshLanAddresses();
   await secureDirectory(path.resolve("storage/private"));
   const database = createDatabasePool(environment);
   const connection = await database.getConnection();
   connection.release();
+  await migratePublicContent(database);
   await new MediaService(
     new ResourceService(database),
     path.resolve("storage/media"),

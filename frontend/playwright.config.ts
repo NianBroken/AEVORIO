@@ -16,12 +16,14 @@ export default defineConfig({
   ],
   projects: [
     { name: 'admin-routes', testMatch: 'admin-routes.spec.ts' },
-    { name: 'website', testMatch: ['site.spec.ts', 'failure-state.spec.ts'] },
+    { name: 'website', testMatch: ['site.spec.ts', 'failure-state.spec.ts', 'layout-compatibility.spec.ts', 'native-zoom.spec.ts'] },
     { name: 'admin', testMatch: 'admin.spec.ts', dependencies: ['website'] },
+    { name: 'global-settings', testMatch: 'global-settings.spec.ts', dependencies: ['admin'] },
+    { name: 'admin-compatibility', testMatch: 'admin-compatibility.spec.ts', dependencies: ['global-settings'] },
     {
       name: 'maintenance',
       testMatch: 'maintenance.spec.ts',
-      dependencies: ['admin'],
+      dependencies: ['global-settings'],
     },
     {
       name: 'coverage',

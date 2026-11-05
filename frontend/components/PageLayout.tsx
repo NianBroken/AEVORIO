@@ -118,9 +118,7 @@ export function PageLayout({
                 </Link>
               ))}
             </nav>
-            <span className="footer-attribution">
-              {settings.projectName} / {settings.author}
-            </span>
+            {value("footerAttribution") && <span className="footer-attribution">{value("footerAttribution")}</span>}
           </div>
           <p className="footer-note">{value("footerNote")}</p>
           {value("copyright") && (

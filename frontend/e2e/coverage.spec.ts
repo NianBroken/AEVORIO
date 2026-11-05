@@ -87,7 +87,17 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
       jsonStrings: true,
       connectionLimit: 6,
     });
-    const service = new ResourceService(database);
+    const service = new ResourceService(database, path.join(directory, "media"));
+    const { cloneMedia } = backendRequire("./dist/backend/src/services/media-ownership.js") as typeof import("../../backend/src/services/media-ownership");
+    const ownedImage = async (record: ResourceRecord, field: string, source: string) => {
+      const connection = await database!.getConnection();
+      try {
+        const id = await cloneMedia(connection, source, path.join(directory, "media"));
+        await connection.execute("INSERT INTO media_ownership(media_id,owner_type,owner_id,field_key) VALUES(?,?,?,?)", [id, record.type, record.id, field]);
+        allMedia.push(await service.get("media", id));
+        return id;
+      } finally { connection.release(); }
+    };
     const ctx = () => ({
       actorId: "isolated-dom",
       requestId: randomUUID(),
@@ -160,7 +170,8 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
         }),
       });
     });
-    const allMedia = await service.list("media");
+    const originalMedia = await service.list("media");
+    const allMedia = [...originalMedia];
     const allCategories = await service.list("categories");
     const pages = await service.list("pages");
     const pageSlug = (id: JsonValue | undefined) =>
@@ -174,7 +185,7 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
       "categories",
       "media",
     ] as ResourceType[])
-      for (const baseline of await service.list(type)) {
+      for (const baseline of type === "media" ? originalMedia : await service.list(type)) {
         const unrelated = (await service.list("products")).find(
           (p) => p.id !== baseline.id,
         )!;
@@ -192,7 +203,7 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
           )
             continue;
           if (field.kind === "image")
-            changes[field.key] = allMedia.find((m) => m.id !== original)!.id;
+            changes[field.key] = await ownedImage(baseline, field.key, allMedia.find((m) => m.id !== original)!.id);
           else if (field.kind === "icon")
             changes[field.key] = original === "Cpu" ? "Radio" : "Cpu";
           else if (field.kind === "select")
@@ -203,7 +214,7 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
           else if (field.kind === "list")
             changes[field.key] =
               field.key === "gallery_json"
-                ? [allMedia[0]!.id]
+                ? [await ownedImage(baseline, field.key, allMedia[0]!.id)]
                 : Array.isArray(original) && original.length
                   ? original.map((item, i) => ({
                       id:
@@ -217,11 +228,14 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
         }
         let auxiliary: ResourceRecord | undefined;
         let auxiliaryImage: JsonValue = null;
+        let originalOwnership: import("../../backend/node_modules/mysql2/promise").RowDataPacket[] = [];
         if (type === "media") {
           auxiliary = (await service.list("sections")).find(
             (r) => r.values.section_type === "hero" && r.values.page_id === 1,
           )!;
           auxiliaryImage = auxiliary.values.media_id ?? null;
+          [originalOwnership] = await database.query<import("../../backend/node_modules/mysql2/promise").RowDataPacket[]>("SELECT * FROM media_ownership WHERE media_id=?", [baseline.id]);
+          await database.execute("INSERT INTO media_ownership(media_id,owner_type,owner_id,field_key,claimed) VALUES(?,'sections',?,'media_id',1) ON DUPLICATE KEY UPDATE owner_type='sections',owner_id=?,field_key='media_id',claimed=1", [baseline.id, auxiliary.id, auxiliary.id]);
           auxiliary = await service.save(
             "sections",
             auxiliary.id,
@@ -278,7 +292,7 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
               passed =
                 field.key === "gallery_json"
                   ? serialized.includes(
-                      encodeURIComponent(String(allMedia[0]!.values.file_name)),
+                      encodeURIComponent(String(allMedia.find((item) => item.id === (changed as string[])[0])!.values.file_name)),
                     )
                   : (changed as Values[]).every((item) =>
                       serialized.includes(String(item.text)),
@@ -454,6 +468,8 @@ test("隔离环境逐对象核验全部资源字段的实际显示与恢复", as
               },
               ctx(),
             );
+          for (const ownership of originalOwnership) await database.execute("UPDATE media_ownership SET owner_type=?,owner_id=?,field_key=? WHERE media_id=?", [ownership.owner_type, ownership.owner_id, ownership.field_key, baseline.id]);
+          if (type === "media" && !originalOwnership.length) await database.execute("DELETE FROM media_ownership WHERE media_id=?", [baseline.id]);
         }
         for (const field of fields.filter(
           (f) => changes[f.key] === undefined,

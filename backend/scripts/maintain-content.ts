@@ -55,7 +55,7 @@ export async function replaceMediaImage(
     throw new Error("请选择不超过 15 MB 的真实本地图片文件。");
   const resources = new ResourceService(database);
   const current = (await resources.list("media")).find(
-    (m) => m.values.resource_key === resourceKey,
+    (m) => m.id === resourceKey || m.values.resource_key === resourceKey,
   );
   if (!current) throw new Error("媒体资源不存在，原有内容未改变。");
   const buffer = await readFile(sourcePath);

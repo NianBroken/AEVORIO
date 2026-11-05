@@ -18,7 +18,11 @@ if ([int]$configuration.BACKEND_PORT -ne $ports.backend -or ([Uri]$configuration
 $backendHost = $configuration.BACKEND_HOST
 if ($backendHost -in @('0.0.0.0', '::')) { $backendHost = '127.0.0.1' }
 $backendUrl = "http://${backendHost}:$($configuration.BACKEND_PORT)"
-$frontendUrl = $configuration.FRONTEND_ORIGIN
+$networkFile = Join-Path $backendDirectory 'dist\backend\src\config\network.js'
+if (-not (Test-Path -LiteralPath $networkFile)) { throw '网络配置发布文件缺失，请完成后端正式构建。' }
+Push-Location $backendDirectory
+try { $network = (& $NodeExecutable $networkFile) | ConvertFrom-Json } finally { Pop-Location }
+$frontendUrl = $network.origin
 $supervisorFile = Join-Path $backendDirectory 'dist\backend\src\runtime\supervisor.js'
 foreach ($file in @($supervisorFile, (Join-Path $frontendDirectory '.next\BUILD_ID'))) {
     if (-not (Test-Path -LiteralPath $file)) { throw '发布产物不完整，请完成前后端正式构建。' }
@@ -33,6 +37,8 @@ foreach ($port in @([int]$configuration.BACKEND_PORT, ([Uri]$frontendUrl).Port))
     foreach ($ownerId in @($listeners.OwningProcess | Select-Object -Unique)) {
         $owner = Get-CimInstance Win32_Process -Filter "ProcessId=$ownerId"
         if ($owner) {
+            $belongsToProject = $owner.CommandLine -and (($owner.CommandLine.IndexOf($frontendDirectory, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or ($owner.CommandLine.IndexOf($backendDirectory, [StringComparison]::OrdinalIgnoreCase) -ge 0))
+            if (-not $belongsToProject) { throw "端口 $port 被其他程序占用，进程 $ownerId。未停止该程序。" }
             Write-Output "释放端口 $port，进程 $ownerId，程序 $($owner.ExecutablePath)，命令 $($owner.CommandLine)"
             Stop-Process -Id $ownerId -Force -ErrorAction Stop
             Wait-Process -Id $ownerId -Timeout 10 -ErrorAction SilentlyContinue
@@ -44,6 +50,14 @@ foreach ($port in @([int]$configuration.BACKEND_PORT, ([Uri]$frontendUrl).Port))
 $env:BACKEND_HOST = $configuration.BACKEND_HOST
 $env:BACKEND_PORT = $configuration.BACKEND_PORT
 $env:FRONTEND_ORIGIN = $frontendUrl
+# 入站访问仅开放当前项目的前端端口，接口与数据库继续由本机访问。
+$pathBytes = [Text.Encoding]::UTF8.GetBytes($frontendDirectory.ToLowerInvariant())
+$hasher = [Security.Cryptography.SHA256]::Create()
+try { $pathHash = [BitConverter]::ToString($hasher.ComputeHash($pathBytes)).Replace('-', '').Substring(0, 16) } finally { $hasher.Dispose() }
+$firewallName = "AEVORIO-$pathHash-Frontend"
+if (-not (Get-NetFirewallRule -Name $firewallName -ErrorAction SilentlyContinue)) {
+    New-NetFirewallRule -Name $firewallName -DisplayName "AEVORIO 局域网前端 $($ports.frontend)" -Direction Inbound -Action Allow -Protocol TCP -LocalPort $ports.frontend -RemoteAddress LocalSubnet -Program $NodeExecutable -Profile Any | Out-Null
+}
 $logStamp = [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff')
 foreach ($directory in @($frontendDirectory, $backendDirectory)) {
     $archive = Join-Path $directory "reports\runtime-history\$logStamp"

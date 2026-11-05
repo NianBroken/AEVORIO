@@ -12,6 +12,7 @@ import { hashPassword } from '../src/services/password-service';
 import { ResourceService } from '../src/services/resource-service';
 import { MediaService } from '../src/services/media-service';
 import { MysqlSiteRepository } from '../src/repositories/site-repository';
+import { migratePublicContent } from '../src/database/public-content-migration';
 import {
   getValue,
   ICON_NAMES,
@@ -34,6 +35,23 @@ let owner: mysql.Connection;
 const actor = { actorId: 'test-admin', requestId: randomUUID() };
 const operation = () => ({ ...actor, operationId: randomUUID() });
 const coverageResults: Array<Record<string, unknown>> = [];
+
+it('公开署名迁移只填充缺失值并保留主动清空和历史兼容', async () => {
+  await database.execute("UPDATE site_settings SET setting_value=JSON_REMOVE(setting_value,'$.footerAttribution') WHERE setting_key='public_content'");
+  await migratePublicContent(database);
+  const inherited = await management.get('settings', 'public_content');
+  expect(typeof getValue(inherited.values, 'setting_value.footerAttribution')).toBe('string');
+  const cleared = await management.save('settings', 'public_content', { version: inherited.version, changes: { 'setting_value.footerAttribution': '' } }, operation());
+  await migratePublicContent(database);
+  const unchanged = await management.get('settings', 'public_content');
+  expect(unchanged.version).toBe(cleared.version);
+  expect(getValue(unchanged.values, 'setting_value.footerAttribution')).toBe('');
+  await database.execute("INSERT INTO content_revisions(resource_type,resource_id,version,snapshot_json,actor_id,operation_id) VALUES('settings','public_content',?,?,?,?)", [cleared.version + 1000000, JSON.stringify({ ...cleared, values: { setting_value: { brandTagline: '旧历史兼容验证' } } }), 'test-admin', randomUUID()]);
+  const [rows] = await database.query<mysql.RowDataPacket[]>("SELECT id FROM content_revisions WHERE resource_type='settings' AND resource_id='public_content' ORDER BY id DESC LIMIT 1");
+  const restored = await management.restore('settings', 'public_content', Number(rows[0]!.id), unchanged.version, operation());
+  expect(getValue(restored.values, 'setting_value.footerAttribution')).toBe('');
+  expect(getValue(restored.values, 'setting_value.brandTagline')).toBe('旧历史兼容验证');
+});
 
 // 测试复制真实数据到独立 MySQL 数据库，正式网站和图片始终不受测试写入影响。
 beforeAll(async () => {

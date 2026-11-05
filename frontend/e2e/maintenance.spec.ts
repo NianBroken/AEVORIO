@@ -49,7 +49,7 @@ test("数据库文字与产品图片替换立即显示，验收后恢复原内�
     "storage/media",
     "home-engineering.png",
   );
-  const resourceKey = `product-${product.slug}`;
+  const resourceKey = product.media.id;
   const editedDescription =
     "浏览器维护验收文字，单独验证该产品的说明已从真实数据库更新。";
   const editedCompany = "企业名称示例验证";

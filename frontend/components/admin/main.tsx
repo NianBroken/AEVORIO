@@ -1,4 +1,5 @@
 "use client";
+import { createId } from "../../lib/create-id";
 import { PASSWORD_PATTERN, PASSWORD_MESSAGE } from "../../../shared/password";
 import { lazy, Suspense, useEffect, useState, useRef, useEffectEvent } from "react";
 import {
@@ -35,7 +36,7 @@ import {
   type Values,
 } from "../../../shared/content";
 import {
-  DESIGN_WIDTH,
+  CANVAS_STYLE,
   useScaledCanvas,
 } from "../../lib/use-scaled-canvas";
 const Alert = lazy(
@@ -50,6 +51,9 @@ const Select = lazy(
 ) as unknown as (typeof import("antd"))["Select"];
 const Editor = lazy(() =>
   import("./Editor").then((module) => ({ default: module.Editor })),
+);
+const GlobalSettings = lazy(() =>
+  import("./GlobalSettings").then((module) => ({ default: module.GlobalSettings })),
 );
 const Table = lazy(
   () => import("antd/es/table"),
@@ -121,6 +125,8 @@ function Application() {
     }>;
   } | null>(null);
   const [creating, setCreating] = useState(false);
+  const [globalDirty, setGlobalDirty] = useState(false);
+  const [globalReload, setGlobalReload] = useState(0);
   const [listPage, setListPage] = useState(1);
   const [pageSize, setPageSize] = useState(12);
   const { message, modal } = App.useApp();
@@ -169,6 +175,19 @@ function Application() {
       return;
     }
     const params = new URLSearchParams(window.location.search);
+    if (target === "global" || legacy?.[1] === "settings") {
+      if (parts[3] && !["company_name", "public_content"].includes(parts[3])) {
+        setRouteError("全局内容路径无效，请从左侧菜单返回全局内容设置。");
+        return;
+      }
+      setView("global");
+      setResourceView("settings");
+      setRecord(null);
+      setCreating(false);
+      const anchor = parts[3] === "company_name" || legacy?.[2] === "company_name" ? "#global-name" : window.location.hash.startsWith("#global-") ? window.location.hash : "";
+      window.history.replaceState(null, "", "/admin/global/settings" + anchor);
+      return;
+    }
     setView(target);
     setResourceView(resource);
     setQuery(params.get("q") || "");
@@ -211,7 +230,7 @@ function Application() {
     if (parts.length === 1 && !legacy) window.history.replaceState(null, "", "/admin/overview");
   });
   const handleHistory = useEffectEvent(() => {
-    if (document.querySelector(".editor") && !window.confirm("返回其他页面将离开当前编辑区域，请确认未保存的输入可以丢弃。")) {
+    if ((document.querySelector(".editor") || globalDirty) && !window.confirm("返回其他页面将离开当前编辑区域，请确认未保存的输入可以丢弃。")) {
       writeAddress(view, resourceView, record?.id || "", true);
       return;
     }
@@ -235,7 +254,9 @@ function Application() {
     setBusy(true);
     setError("");
     try {
-      if (target === "overview") {
+      if (target === "global") {
+        setGlobalReload((value) => value + 1);
+      } else if (target === "overview") {
         const data = await api<NonNullable<typeof overview>>("/overview");
         if (ticket === refreshTicket.current) setOverview(data);
       } else if (target !== "personal") {
@@ -311,7 +332,7 @@ function Application() {
       setListPage(1);
       writeAddress(target, DEFAULT_RESOURCE[target] || "settings");
     };
-    if (record)
+    if (record || globalDirty)
       modal.confirm({
         title: "离开当前编辑区域",
         content: "未保存的输入将被丢弃，请确认已完成保存。",
@@ -353,7 +374,7 @@ function Application() {
         try {
           await api(`/resources/${item.type}/${item.id}`, "DELETE", {
             version: item.version,
-            operationId: crypto.randomUUID(),
+            operationId: createId(),
           });
           await refresh();
           message.success("对象已移入可恢复记录。");
@@ -389,11 +410,11 @@ function Application() {
         String(item.values.category_id ?? item.values.page_id) === filter),
   );
   return (
-    <div className="admin-shell">
+    <div className="admin-shell scaled-canvas-shell">
       <div
         ref={stageRef}
-        className="admin-stage"
-        style={{ width: DESIGN_WIDTH }}
+        className="admin-stage scaled-canvas-stage"
+        style={CANVAS_STYLE}
       >
         {!ready ? (
           <LoadingState />
@@ -507,7 +528,10 @@ function Application() {
                             : "编辑真实发布内容，图片、文字与展示位置保持明确对应。"}
                         </p>
                       </div>
-                      <Button onClick={() => void refresh()} loading={busy}>
+                      <Button aria-label="刷新数据" onClick={() => {
+                        if (globalDirty) modal.confirm({ title: "刷新全局内容", content: "刷新将丢弃尚未保存的输入。", okText: "丢弃并刷新", cancelText: "继续编辑", onOk: () => refresh() });
+                        else void refresh();
+                      }} loading={busy}>
                         刷新数据
                       </Button>
                     </div>
@@ -624,6 +648,10 @@ function Application() {
                       </>
                     ) : view === "personal" && user ? (
                       <PersonalSettings user={user} onChanged={setUser} />
+                    ) : view === "global" ? (
+                      <Suspense fallback={<Spin />}>
+                        <GlobalSettings key={globalReload} reloadToken={globalReload} onDirtyChange={setGlobalDirty} />
+                      </Suspense>
                     ) : view !== "overview" ? (
                       <section className="panel">
                         {(VIEW_RESOURCES[view]?.length ?? 0) > 1 && (
@@ -1067,7 +1095,7 @@ function CreateDialog({
         body.set("file", file);
         body.set("ownerType", type);
         body.set("fieldKey", type === "products" ? "primary_media_id" : "media_id");
-        body.set("operationId", crypto.randomUUID());
+        body.set("operationId", createId());
         const uploaded = await api<ResourceRecord>(
           "/media/uploads",
           "POST",
@@ -1099,7 +1127,7 @@ function CreateDialog({
           const values: Values =
             type === "products"
               ? {
-                  slug: crypto.randomUUID(),
+                  slug: createId(),
                   name: input.name,
                   category_id: input.category,
                   primary_media_id: input.media,
@@ -1117,7 +1145,7 @@ function CreateDialog({
                 }
               : type === "categories"
                 ? {
-                    slug: crypto.randomUUID(),
+                    slug: createId(),
                     name: input.name,
                     description: input.description,
                     icon: "CircuitBoard",
@@ -1127,7 +1155,7 @@ function CreateDialog({
                   }
                 : {
                     page_id: Number(input.page),
-                    section_key: "section-" + crypto.randomUUID(),
+                    section_key: "section-" + createId(),
                     section_type:
                       input.sectionType === "custom"
                         ? String(input.customSectionType).trim()
@@ -1144,7 +1172,7 @@ function CreateDialog({
           const record = await api<ResourceRecord>(
             `/resources/${type}`,
             "POST",
-            { operationId: crypto.randomUUID(), values },
+            { operationId: createId(), values },
           );
           onCreated(record);
         } catch (e) {

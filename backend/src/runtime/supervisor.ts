@@ -6,6 +6,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { readEnvironment } from "../config/env";
 
 const CHECK_INTERVAL = 1000;
+const STATE_WRITE_ATTEMPTS = 20;
+const STATE_WRITE_RETRY_MS = 50;
 const backendRoot = process.cwd();
 const frontendRoot = path.resolve(backendRoot, "../frontend");
 const reportRoot = path.join(frontendRoot, "reports");
@@ -68,7 +70,7 @@ const services: ManagedService[] = [
       path.join(frontendRoot, "node_modules/next/dist/bin/next"),
       "start",
       "--hostname",
-      frontendUrl.hostname,
+      "0.0.0.0",
       "--port",
       frontendUrl.port || "24681",
     ],
@@ -85,7 +87,17 @@ async function saveState(): Promise<void> {
   state.generatedAt = new Date().toISOString();
   const temp = recordFile + ".tmp";
   await writeFile(temp, JSON.stringify(state, null, 2), "utf8");
-  await rename(temp, recordFile);
+  // Windows 读取进程记录时短暂持有文件句柄，等待共享锁释放后完成原子替换。
+  for (let attempt = 0; attempt < STATE_WRITE_ATTEMPTS; attempt++) {
+    try {
+      await rename(temp, recordFile);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (process.platform !== "win32" || !["EPERM", "EBUSY", "EACCES"].includes(code ?? "") || attempt === STATE_WRITE_ATTEMPTS - 1) throw error;
+      await delay(STATE_WRITE_RETRY_MS);
+    }
+  }
 }
 async function healthy(service: ManagedService): Promise<boolean> {
   try {

@@ -151,15 +151,6 @@ test("后台实际管理、即时发布、历史恢复、独立上传与七种�
       selector: ".category-index-title",
     },
     {
-      type: "settings",
-      menu: "全局内容设置",
-      field: "公司名称",
-      key: "setting_value",
-      value: "企业名称示例界面验证",
-      publicPath: "/",
-      selector: ".wordmark-name",
-    },
-    {
       type: "pages",
       menu: "公司首页设置",
       field: "页面描述",
@@ -458,10 +449,10 @@ test("后台实际管理、即时发布、历史恢复、独立上传与七种�
   expect(bad.status()).toBe(409);
   const linked = await context.newPage();
   await linked.goto(adminOrigin + "/admin/#/settings/company_name");
-  await expect(linked.locator(".editor-toolbar h2")).toHaveText("公司名称");
-  await expect(linked).toHaveURL(/\/admin\/global\/settings\/company_name$/u);
+  await expect(linked.getByRole("textbox", { name: "网站名称", exact: true })).toBeVisible();
+  await expect(linked).toHaveURL(/\/admin\/global\/settings#global-name$/u);
   await linked.reload();
-  await expect(linked.locator(".editor-toolbar h2")).toHaveText("公司名称");
+  await expect(linked.getByRole("textbox", { name: "网站名称", exact: true })).toBeVisible();
   await linked.close();
   await navigate(page, "个人设置");
   await expect(page.getByRole("heading", { name: "管理员账号", exact: true })).toBeVisible();

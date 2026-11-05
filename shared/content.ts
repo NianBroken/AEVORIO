@@ -112,6 +112,7 @@ export const INITIAL_PUBLIC_CONTENT: Values = {
   footerNote:
     "展示产品、服务和协作内容均为可编辑示例，不表示已量产、取得认证或存在实际合作承诺。",
   copyright: "",
+  footerAttribution: "",
   contact: "",
   logo: "",
   favicon: "",
@@ -167,6 +168,7 @@ export const PUBLIC_LABELS: Record<string, string> = {
   footerSummary: "页脚摘要",
   footerNote: "页脚说明",
   copyright: "版权说明",
+  footerAttribution: "页脚署名",
   contact: "联系信息",
   logo: "导航 Logo 图片",
   favicon: "站点图标",

@@ -68,10 +68,12 @@ export async function makePageMetadata(slug: PageSlug): Promise<Metadata> {
 
   return {
     metadataBase: new URL(siteOrigin),
+    applicationName: companyName,
     title: `${companyName}｜${title}`,
     description,
     openGraph: result.ok
       ? {
+          siteName: companyName,
           title: result.data.page.ogTitle || title,
           description: result.data.page.ogDescription || description,
           images: result.data.page.ogMedia

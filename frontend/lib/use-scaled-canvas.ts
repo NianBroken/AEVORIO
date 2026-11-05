@@ -1,5 +1,10 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import './scaled-canvas.css';
 export const DESIGN_WIDTH = 1440;
+export const CANVAS_STYLE: CSSProperties & Record<'--canvas-width', string> = {
+  width: DESIGN_WIDTH,
+  '--canvas-width': `${DESIGN_WIDTH}px`,
+};
 // 前台和管理界面共用画布测量，使用同一缩放比例和真实文档高度。
 export function useScaledCanvas() {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -11,19 +16,25 @@ export function useScaledCanvas() {
     let frame = 0;
     const measure = () => {
       if (disposed) return;
-      const width = stage.parentElement?.clientWidth ?? document.documentElement.clientWidth;
+      const containerWidth = stage.parentElement?.clientWidth ?? document.documentElement.clientWidth;
+      const viewport = window.visualViewport;
+      const width = Math.min(containerWidth, viewport?.width ?? containerWidth);
       if (width <= 0) return;
       const scale = width / DESIGN_WIDTH;
+      const viewportHeight = viewport?.height ?? window.innerHeight;
+      const horizontalOffset = Math.max(0, Math.min(viewport?.offsetLeft ?? 0, containerWidth - width));
       stage.style.setProperty('--canvas-scale', String(scale));
+      stage.style.setProperty('--canvas-width', `${DESIGN_WIDTH}px`);
+      stage.style.marginLeft = `${horizontalOffset / scale}px`;
       stage.style.setProperty(
         '--scaled-viewport-height',
-        `${window.innerHeight / scale}px`,
+        `${viewportHeight / scale}px`,
       );
       stage.style.setProperty(
         '--scaled-scroll-top',
-        `${window.scrollY / scale}px`,
+        `${(window.scrollY + (viewport?.offsetTop ?? 0)) / scale}px`,
       );
-      const height = Math.max(stage.scrollHeight, window.innerHeight / scale);
+      const height = Math.max(stage.scrollHeight, viewportHeight / scale);
       setMetrics((previous) =>
         previous.scale === scale && previous.height === height
           ? previous
@@ -40,6 +51,7 @@ export function useScaledCanvas() {
     window.addEventListener('resize', update);
     window.addEventListener('scroll', update, { passive: true });
     window.visualViewport?.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('scroll', update);
     void document.fonts.ready.then(update);
     measure();
     return () => {
@@ -49,6 +61,7 @@ export function useScaledCanvas() {
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update);
       window.visualViewport?.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('scroll', update);
     };
   }, []);
   return { stageRef, ...metrics };

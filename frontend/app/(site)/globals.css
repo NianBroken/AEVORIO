@@ -16,7 +16,6 @@
   --copper: #d4a16c;
   --sky: #6d8790;
   --sage: #9ca487;
-  --canvas-width: 1440px;
 }
 
 * {
@@ -75,8 +74,6 @@ img {
 }
 
 .design-stage {
-  transform: translateZ(0);
-  zoom: var(--canvas-scale, calc(100cqw / 1440px));
   position: relative;
   top: 0;
   left: 0;
@@ -219,7 +216,7 @@ img {
 .hero-block {
   position: relative;
   display: flex;
-  width: 1440px;
+  width: var(--canvas-width);
   align-items: center;
   min-height: 710px;
   padding: 62px 120px 94px;
@@ -241,7 +238,6 @@ img {
   right: 0;
   bottom: 0;
   left: 0;
-  overflow: hidden;
   background: #e8ece5;
 }
 
@@ -502,7 +498,6 @@ img {
 
 .editorial-image-frame {
   position: relative;
-  overflow: hidden;
   width: 100%;
   aspect-ratio: 1.42;
   border: 1px solid rgba(106, 126, 107, 0.12);
@@ -585,7 +580,6 @@ img {
 .strip-visual {
   position: relative;
   height: 435px;
-  overflow: hidden;
   background: #e2e7df;
 }
 
@@ -708,7 +702,6 @@ img {
   position: relative;
   width: 100%;
   aspect-ratio: 1.38;
-  overflow: hidden;
   border-radius: 5px;
   background: #e6ebe4;
 }
@@ -765,7 +758,6 @@ img {
 
 .capability-art {
   position: relative;
-  overflow: hidden;
   width: 100%;
   aspect-ratio: 1.28;
   border-radius: 4px;
@@ -1130,7 +1122,6 @@ img {
   display: block;
   width: 100%;
   aspect-ratio: 1.32;
-  overflow: hidden;
   border: 1px solid #dfe5dc;
   border-radius: 5px;
   background: #e8eee8;
@@ -1138,11 +1129,11 @@ img {
 
 .product-image-frame img {
   object-fit: contain;
-  transition: transform 200ms ease;
+  transition: filter 200ms ease;
 }
 
 .product-tile:hover .product-image-frame img {
-  transform: scale(1.035);
+  filter: brightness(1.035);
 }
 
 .product-tile-copy {
@@ -1192,12 +1183,12 @@ img {
 .product-dialog-scrim {
   position: fixed;
   z-index: 30;
-  top: calc(var(--dialog-scroll, 0px) * 1px);
+  top: var(--scaled-scroll-top, 0px);
   right: auto;
   left: 0;
   display: grid;
-  width: 1440px;
-  height: calc(var(--dialog-height, 900px) * 1px);
+  width: var(--canvas-width);
+  height: var(--scaled-viewport-height, 900px);
   padding: 45px 0;
   place-items: center;
   background: rgba(37, 48, 42, 0.46);
@@ -1223,7 +1214,6 @@ img {
   display: grid;
   align-items: center;
   min-height: 526px;
-  overflow: hidden;
   background: #e8eee8;
 }
 

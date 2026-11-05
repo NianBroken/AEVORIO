@@ -1,0 +1,14 @@
+/* 画布在布局阶段整体缩放，文档保留自然高度与原生滚动能力。 */
+.scaled-canvas-shell {
+  container-type: inline-size;
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+.scaled-canvas-stage {
+  position: relative;
+  zoom: var(--canvas-scale, 1);
+  transform: translateZ(0);
+  transform-origin: top left;
+  min-height: var(--scaled-viewport-height, 100vh);
+}
