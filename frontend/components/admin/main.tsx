@@ -1,4 +1,5 @@
 "use client";
+import { VisualPreviewProvider } from "./VisualPreview";
 import { createId } from "../../lib/create-id";
 import { PASSWORD_PATTERN, PASSWORD_MESSAGE } from "../../../shared/password";
 import { lazy, Suspense, useEffect, useState, useRef, useEffectEvent } from "react";
@@ -518,8 +519,8 @@ function Application() {
                   />
                 ) : (
                   <>
-                    <div className="page-heading">
-                      <div>
+                    <div className={`page-heading${view === "global" ? " global-refresh" : ""}`}>
+                      {view !== "global" && <div>
                         <p className="eyebrow">AEVORIO / CONTENT STUDIO</p>
                         <h1>{MENU.find((item) => item.key === view)?.label}</h1>
                         <p>
@@ -527,7 +528,7 @@ function Application() {
                             ? "从一处维护网站内容，让每一项修改准确呈现。"
                             : "编辑真实发布内容，图片、文字与展示位置保持明确对应。"}
                         </p>
-                      </div>
+                      </div>}
                       <Button aria-label="刷新数据" onClick={() => {
                         if (globalDirty) modal.confirm({ title: "刷新全局内容", content: "刷新将丢弃尚未保存的输入。", okText: "丢弃并刷新", cancelText: "继续编辑", onOk: () => refresh() });
                         else void refresh();
@@ -1325,7 +1326,7 @@ export default function AdminApplication() { return (
           <LoadingState standalone />
         }
       >
-        <Application />
+        <VisualPreviewProvider><Application /></VisualPreviewProvider>
       </Suspense>
     </App>
   </ConfigProvider>

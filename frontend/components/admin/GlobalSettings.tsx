@@ -1,3 +1,4 @@
+import { FieldValuePreview, previewMedia } from "./VisualPreview";
 import { useEffect, useState } from "react";
 import { Alert, App, Button, Empty, Form, Modal, Space, Spin } from "antd";
 import { getValue, setValue, REVISION_PAGE_SIZE, type ResourceRecord, type Values, type JsonValue } from "../../../shared/content";
@@ -11,7 +12,6 @@ type Records = Record<string, ResourceRecord>;
 type Revision = { id: number; created_at: string; username: string; snapshot_json: ResourceRecord };
 type Conflict = { group: GlobalGroup; latest: ResourceRecord; values: Values };
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
-const describe = (value: JsonValue | undefined) => value === "" || value == null ? "空" : typeof value === "object" ? JSON.stringify(value) : String(value);
 const modalContainer = () => document.querySelector<HTMLElement>(".admin-stage")!;
 
 // 分组共享发布基线，输入草稿独立合并，保存只提交当前分组的字段。
@@ -110,9 +110,6 @@ export function GlobalSettings({ reloadToken, onDirtyChange }: { reloadToken: nu
   if (!records.company_name || !records.public_content) return <Alert type="error" title={error || "公共内容读取失败"} action={<Button onClick={() => { setLoading(true); setAttempt((value) => value + 1); }}>重新读取</Button>} />;
   return <div className="global-settings">
     {error && <Alert type="error" showIcon title={error} closable onClose={() => setError("")} />}
-    <nav className="global-settings-links" aria-label="公共内容分组">
-      {GLOBAL_GROUPS.filter((group) => fieldsForGroup(group, records[group.recordId]!).length).map((group) => <a key={group.key} href={`#global-${group.key}`}>{group.label}</a>)}
-    </nav>
     {GLOBAL_GROUPS.map((group) => {
       const record = records[group.recordId]!;
       const fields = fieldsForGroup(group, record);
@@ -132,12 +129,12 @@ export function GlobalSettings({ reloadToken, onDirtyChange }: { reloadToken: nu
     })}
     <Modal getContainer={modalContainer} destroyOnHidden title="内容已由其他操作更新" open={Boolean(conflict)} onCancel={() => setConflict(null)} footer={conflict && <Space><Button disabled={busy} onClick={() => setConflict(null)}>保留输入继续编辑</Button><Button type="primary" loading={busy} onClick={() => void save(conflict.group, conflict.values, conflict.latest)}>以当前输入重新提交</Button></Space>}>
       <p>请比较最新发布内容与当前输入，确认后再提交当前分组。</p>
-      {conflict && fieldsForGroup(conflict.group, conflict.latest).filter((field) => !same(getValue(conflict.latest.values, field.key), getValue(conflict.values, field.key))).map((field) => <div className="preview-change" key={field.key}><strong>{field.label}</strong><p>最新发布：{describe(getValue(conflict.latest.values, field.key))}</p><p>当前输入：{describe(getValue(conflict.values, field.key))}</p></div>)}
+      {conflict && fieldsForGroup(conflict.group, conflict.latest).filter((field) => !same(getValue(conflict.latest.values, field.key), getValue(conflict.values, field.key))).map((field) => <div className="preview-change" key={field.key}><strong>{field.label}</strong><p>最新发布：<FieldValuePreview field={field} values={conflict.latest.values} media={[...media, ...(conflict.latest.relatedMedia ?? [])]} /></p><p>当前输入：<FieldValuePreview field={field} values={conflict.values} media={media} /></p></div>)}
     </Modal>
     <Modal getContainer={modalContainer} destroyOnHidden title={history ? `${history.group.label}的历史内容` : "历史内容"} open={Boolean(history)} onCancel={() => setHistory(null)} footer={null} width={760}>
       {history && (history.rows.length ? history.rows.map((revision) => <details className="global-history-item" key={revision.id}>
         <summary>{new Date(revision.created_at).toLocaleString("zh-CN")} / {revision.username ?? "初始化"}</summary>
-        {fieldsForGroup(history.group, records[history.group.recordId]!).filter((field) => getValue(revision.snapshot_json.values, field.key) !== undefined).map((field) => <div className="preview-change" key={field.key}><strong>{field.label}</strong><p>当前发布：{describe(getValue(records[history.group.recordId]!.values, field.key))}</p><p>历史内容：{describe(getValue(revision.snapshot_json.values, field.key))}</p></div>)}
+        {fieldsForGroup(history.group, records[history.group.recordId]!).filter((field) => getValue(revision.snapshot_json.values, field.key) !== undefined).map((field) => <div className="preview-change" key={field.key}><strong>{field.label}</strong><p>当前发布：<FieldValuePreview field={field} values={records[history.group.recordId]!.values} media={media} /></p><p>历史内容：<FieldValuePreview field={field} values={revision.snapshot_json.values} media={previewMedia(revision.snapshot_json, media)} /></p></div>)}
         <Button disabled={busy} onClick={() => restore(history.group, revision)}>恢复此组内容</Button>
       </details>) : <Empty description="尚无历史修改" />)}
       {history?.more && <Button loading={historyBusy} onClick={() => void loadHistory(history.group, history.page + 1)}>加载更早记录</Button>}

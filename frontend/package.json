@@ -6,7 +6,7 @@
   "description": "AEVORIO 企业网站 Next.js 前端",
   "scripts": {
     "dev": "node scripts/run-next.mjs dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "node scripts/run-next.mjs start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

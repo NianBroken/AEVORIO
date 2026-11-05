@@ -15,6 +15,7 @@ export default defineConfig({
     ['json', { outputFile: 'reports/browser-test-report.json' }],
   ],
   projects: [
+    { name: "visual-options", testMatch: "visual-options.spec.ts", dependencies: ["maintenance", "admin-compatibility"] },
     { name: 'admin-routes', testMatch: 'admin-routes.spec.ts' },
     { name: 'website', testMatch: ['site.spec.ts', 'failure-state.spec.ts', 'layout-compatibility.spec.ts', 'native-zoom.spec.ts'] },
     { name: 'admin', testMatch: 'admin.spec.ts', dependencies: ['website'] },

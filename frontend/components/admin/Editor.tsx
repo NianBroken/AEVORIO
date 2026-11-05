@@ -1,3 +1,4 @@
+import { FieldValuePreview, previewMedia } from "./VisualPreview";
 import { lazy, useEffect, useState } from "react";
 import {
   Button,
@@ -150,11 +151,9 @@ export function Editor({
               .map((field) => (
                 <div className="preview-change" key={field.key}>
                   <strong>{field.label}</strong>
-                  <del>{displayValue(getValue(record.values, field.key))}</del>
+                  <del><FieldValuePreview field={field} values={record.values} media={[...media, ...(record.relatedMedia ?? [])]} /></del>
                   <p>
-                    {displayValue(
-                      getValue(revision.snapshot_json.values, field.key),
-                    )}
+                    <FieldValuePreview field={field} values={revision.snapshot_json.values} media={previewMedia(revision.snapshot_json, media)} />
                   </p>
                 </div>
               ))}
@@ -333,11 +332,9 @@ export function Editor({
             .map((field) => (
               <div className="preview-change" key={field.key}>
                 <strong>{field.label}</strong>
-                <del>{String(getValue(record.values, field.key) ?? "空")}</del>
+                <del><FieldValuePreview field={field} values={record.values} media={[...media, ...(record.relatedMedia ?? [])]} /></del>
                 <p>
-                  {Array.isArray(getValue(values, field.key))
-                    ? JSON.stringify(getValue(values, field.key))
-                    : String(getValue(values, field.key) ?? "空")}
+                  <FieldValuePreview field={field} values={values} media={[...media, ...(record.relatedMedia ?? [])]} />
                 </p>
               </div>
             ))}
@@ -352,16 +349,4 @@ export function Editor({
       </div>
     </div>
   );
-}
-function displayValue(value: JsonValue | undefined): string {
-  if (value === null || value === undefined || value === "") return "空";
-  if (Array.isArray(value))
-    return value
-      .map((item) =>
-        typeof item === "object" && item && !Array.isArray(item)
-          ? String(item.text ?? "")
-          : String(item),
-      )
-      .join("；");
-  return typeof value === "boolean" ? (value ? "是" : "否") : String(value);
 }

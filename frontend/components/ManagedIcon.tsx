@@ -1,46 +1,7 @@
 "use client";
-import {
-  CircuitBoard,
-  ArrowUpRight,
-  ArrowDownRight,
-  MoveRight,
-  ChevronRight,
-  X,
-  Cpu,
-  Radio,
-  Layers,
-  Zap,
-  Code,
-  Box,
-  Globe,
-  Check,
-  Settings,
-  Activity,
-  Cable,
-  Sparkles,
-} from "lucide-react";
+import { ICON_REGISTRY } from "../lib/icon-registry";
 import Image from "next/image";
 import { useSiteContent } from "./ContentProvider";
-const ICONS = {
-  CircuitBoard,
-  ArrowUpRight,
-  ArrowDownRight,
-  MoveRight,
-  ChevronRight,
-  X,
-  Cpu,
-  Radio,
-  Layers,
-  Zap,
-  Code,
-  Box,
-  Globe,
-  Check,
-  Settings,
-  Activity,
-  Cable,
-  Sparkles,
-};
 // 只渲染允许名单中的图标或数据库媒体，内容不能动态导入程序代码。
 export function ManagedIcon({
   name,
@@ -69,7 +30,7 @@ export function ManagedIcon({
       />
     ) : null;
   }
-  const Icon = ICONS[name as keyof typeof ICONS];
+  const Icon = ICON_REGISTRY[name as keyof typeof ICON_REGISTRY];
   return Icon ? (
     <Icon
       data-managed-icon={name}

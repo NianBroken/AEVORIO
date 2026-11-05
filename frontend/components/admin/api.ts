@@ -1,3 +1,4 @@
+import { CONTENT_PUBLISHED_EVENT } from "../../lib/visual-options";
 import type { ApiEnvelope } from "../../../shared/site";
 import type { ResourceRecord, ResourceType } from "../../../shared/content";
 const PAGE_LIMIT = 500;
@@ -57,5 +58,7 @@ export async function api<T>(
   const data = envelope.Data;
   if (data && typeof data === "object" && "csrfToken" in data)
     csrf = String(data.csrfToken);
+  if (method !== "GET" && /^\/(resources|revisions)\//u.test(path))
+    window.dispatchEvent(new Event(CONTENT_PUBLISHED_EVENT));
   return data as T;
 }

@@ -1510,14 +1510,6 @@ img {
   background: var(--paper);
   color: var(--ink);
 }
-.managed-site[data-decoration="dots"] {
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    rgba(55, 109, 88, 0.045) 1px,
-    transparent 1.5px
-  );
-  background-size: 32px 32px;
-}
 .design-stage {
   background: var(--paper);
 }

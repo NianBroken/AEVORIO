@@ -1,8 +1,8 @@
-import NextImage from "next/image";
+import { VisualOption, MediaPreview } from "./VisualPreview";
 import { Button, Input, InputNumber, Switch, Select, Space, Upload } from "antd";
 import { getValue, ICON_NAMES, type FieldDefinition, type JsonValue, type ResourceRecord, type Values } from "../../../shared/content";
 import { createId } from "../../lib/create-id";
-import { IconPreview } from "./IconPreview";
+
 
 // 普通资源与全局设置使用同一组字段控件、图片展示和列表编辑行为。
 export function EditorField({ field, values, busy, change, media: currentMedia, categories, pages, upload }: {
@@ -75,16 +75,7 @@ export function EditorField({ field, values, busy, change, media: currentMedia, 
           >
             <Button disabled={busy}>上传图片</Button>
           </Upload>
-          {value && currentMedia.some((item) => item.id === value && item.values.file_name) && (
-            <NextImage
-              unoptimized
-              width={160}
-              height={100}
-              className="field-image"
-              src={`/media/${currentMedia.find((m) => m.id === value)?.values.file_name ?? ""}`}
-              alt={field.label}
-            />
-          )}
+          {value && <MediaPreview src={options.find((item) => item.value === value)?.src ?? ""} alt={field.label} />}
         </div>
       );
     if (field.kind === "icon")
@@ -92,12 +83,17 @@ export function EditorField({ field, values, busy, change, media: currentMedia, 
         <div className="icon-field">
           <Select
             {...common}
-            showSearch
+            className="visual-select"
+            showSearch={{ optionFilterProp: "label" }}
+            virtual={false}
+            listHeight={360}
             value={String(value ?? "")}
             options={[
-              ...ICON_NAMES.map((name) => ({ value: name, label: name })),
-
+              ...ICON_NAMES.map((name) => ({ value: name, label: name, title: name })),
+              ...(String(value ?? "").startsWith("media:") ? [{ value: String(value), label: "上传图标", title: "上传图标" }] : []),
             ]}
+            optionRender={(option) => <VisualOption field={field} values={values} media={currentMedia} value={String(option.value)} />}
+            labelRender={(option) => <VisualOption field={field} values={values} media={currentMedia} value={String(option.value)} />}
             onChange={(v) => change(field.key, v)}
           />
           <Upload
@@ -112,9 +108,6 @@ export function EditorField({ field, values, busy, change, media: currentMedia, 
           >
             <Button disabled={busy}>上传图标</Button>
           </Upload>
-          {String(value ?? "").startsWith("media:") ? (
-            <NextImage unoptimized width={64} height={64} className="field-image" src={`/media/${currentMedia.find(item => item.id === String(value).slice(6))?.values.file_name ?? ""}`} alt={field.label} />
-          ) : <IconPreview name={String(value ?? "")} />}
           {value && <Button disabled={busy} onClick={() => change(field.key, "CircuitBoard")}>使用默认图标</Button>}
         </div>
       );
@@ -123,7 +116,12 @@ export function EditorField({ field, values, busy, change, media: currentMedia, 
         <Select
           {...common}
           value={String(value ?? "")}
-          options={field.options?.map((v) => ({ value: v, label: v }))}
+          className="visual-select"
+          virtual={false}
+          listHeight={420}
+          options={field.options?.map((v) => ({ value: v, label: v, title: v }))}
+          optionRender={(option) => <VisualOption field={field} values={values} media={currentMedia} value={String(option.value)} />}
+          labelRender={(option) => <VisualOption field={field} values={values} media={currentMedia} value={String(option.value)} />}
           onChange={(v) => change(field.key, v)}
         />
       );
@@ -232,7 +230,7 @@ function ListField({
         >
           {options ? (
             <Space>
-              {options.find(option => option.value === item)?.src ? <NextImage unoptimized width={96} height={64} className="field-image" src={options.find(option => option.value === item)!.src!} alt={`${field.label}第${index + 1}项`} /> : <span>请上传图片</span>}
+              {options.find(option => option.value === item)?.src ? <MediaPreview src={options.find(option => option.value === item)!.src!} alt={`${field.label}第${index + 1}项`} /> : <span>请上传图片</span>}
               {onUpload && (
                 <Upload
                   accept=".png,.jpg,.jpeg,.webp"

@@ -10,7 +10,7 @@
 
 图片来自项目内部媒体目录，地址包含文件内容版本。前台不保存数据库连接信息。内容服务故障时显示明确故障界面，公共提示使用最近一次成功发布的配置；首次启动尚无成功记录时使用技术故障初始文案。
 
-全局内容直接在 /admin/global/settings 按用途分组编辑，每组独立保存并立即发布。保存一组保留其他组的输入。页脚署名允许留空，旧全局资源地址进入对应分组。字段分组集中定义在 shared/global-settings.ts，普通资源和全局表单共用字段控件与上传流程。
+全局内容直接在 /admin/global/settings 按用途分组编辑，每组独立保存并立即发布。保存一组保留其他组的输入。页脚署名允许留空，旧全局资源地址进入对应分组。字段分组集中定义在 shared/global-settings.ts，普通资源和全局表单共用字段控件与上传流程。全局设置顶部保留刷新操作，各分组直接连续展示。图标、字体、装饰、板块样式和图片展示选项在下拉菜单中显示实际效果，当前选中值同步显示预览。修改比较与历史恢复展示实际媒体，历史图片读取快照元数据。
 
 ## 正式构建
 
@@ -22,6 +22,8 @@ npm --prefix frontend run typecheck
 npm --prefix frontend run lint
 npm --prefix frontend run build
 ```
+
+构建使用 Next.js 官方支持的 Webpack 模式，兼容设备级依赖目录通过目录链接提供给项目的安装方式。
 
 全部应用正式构建完成后，使用启停脚本运行。前台及后台均由 Next.js 在 24681 提供，Express 在 24682 仅提供业务接口与媒体文件服务。
 
@@ -72,6 +74,7 @@ npm --prefix backend run test:browser:cleanup
 | reports/admin-browser-report.json | 真实后台发布、前台显示、图标、展示设置、历史和上传 |
 | reports/resource-dom-coverage.json | 全部可编辑字段的数据库重读、DOM 或元信息及恢复结果 |
 | reports/browser-maintenance-report.json | 本机维护工具、图片像素、版本地址和恢复 |
+| reports/visual-options-chromium.json、visual-options-firefox.json、visual-options-webkit.json | 视觉选项菜单、实际图片与九种尺寸的横向边界 |
 | reports/global-settings-verification.json | 分组保存、草稿保护、署名清空、历史、冲突与上传 |
 | reports/admin-*-compatibility.json | 三种浏览器的全局表单、选择菜单和弹窗，Chromium 包含双指缩放 |
 | reports/layout-chromium.json、layout-firefox.json、layout-webkit.json | 三页连续改变尺寸与独立像素密度检查 |

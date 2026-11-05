@@ -1,3 +1,4 @@
+import { fontFamily, decorationStyle } from "../lib/visual-options";
 import Link from "next/link";
 import Image from "next/image";
 import type { CSSProperties, ReactNode } from "react";
@@ -43,18 +44,13 @@ export function PageLayout({
       value(k),
     ]),
   );
-  const font =
-    value("font") === "serif"
-      ? 'Georgia, "SimSun", serif'
-      : value("font") === "sans"
-        ? '"Segoe UI", "Microsoft YaHei", sans-serif'
-        : '"Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif';
+  const font = fontFamily(value("font"));
   return (
     <ContentProvider settings={settings}>
       <div
         className="managed-site"
         data-decoration={value("decoration")}
-        style={{ ...variables, fontFamily: font } as CSSProperties}
+        style={{ ...variables, ...decorationStyle(value("decoration")), fontFamily: font } as CSSProperties}
       >
         <a className="skip-link" href="#main-content">
           {value("skipLink")}
